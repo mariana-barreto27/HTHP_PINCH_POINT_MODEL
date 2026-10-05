@@ -1,0 +1,26 @@
+\begin{table}[htbp]
+\centering
+\caption{Regression against the supplied pinch-point model.}
+\label{tab:julio_model_regression}
+\small
+\begin{tabular}{lrrrl}
+\hline
+\textbf{Variable} & \textbf{Original} & \textbf{Modular} & \textbf{Difference [\%]} & \textbf{Status} \\
+\hline
+High-stage evaporation temperature & 35 & 35 & +0.000e+00 & MATCH \\
+Low-stage condensation temperature & 45 & 45 & +0.000e+00 & MATCH \\
+Main condenser duty & 101.137 & 101.137 & +0.000e+00 & MATCH \\
+Subcooler duty & 18.863 & 18.863 & +0.000e+00 & MATCH \\
+Total useful heat & 120 & 120 & +0.000e+00 & MATCH \\
+Total shaft power & 75.9941 & 75.9941 & -5.610e-14 & MATCH \\
+Overall shaft COP & 1.57907 & 1.57907 & +5.625e-14 & MATCH \\
+Heat-source mass flow & 4.37443 & 4.37443 & -2.843e-13 & MATCH \\
+\hline
+\end{tabular}
+
+\vspace{1.5mm}
+\begin{minipage}{0.98\linewidth}
+\footnotesize
+Both calculations use the original quadratic compressor correlations at the fixed 35 $^{\circ}$C high-stage evaporation point. The reported COP uses shaft power, as in the supplied model. The current performance plots use electrical power and the linear compressor model.
+\end{minipage}
+\end{table}

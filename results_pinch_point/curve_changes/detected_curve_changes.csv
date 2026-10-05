@@ -1,0 +1,10 @@
+architecture,change_type,high_stage_evaporation_temperature_C,overall_COP_electrical,slope_before_COP_per_K,slope_after_COP_per_K,explanation
+Conventional cascade + subcooler,compressor efficiency regime change,38.5,1.460150616635835,0.007073754340493732,0.014413779130926674,"efficiency status changed from ('none', 'minimum') to ('none', 'none')"
+Conventional cascade + subcooler,local maximum or minimum,51.5,1.5576963774585266,0.0004257434366823354,-0.0001406338239493543,the COP slope changes sign
+Conventional cascade + subcooler,pronounced curve knee,38.0,1.456613739465588,0.0018188525713878079,0.007073754340493732,local slope change exceeds five times the median curvature
+Conventional cascade + subcooler,pronounced curve knee,38.5,1.460150616635835,0.007073754340493732,0.014413779130926674,local slope change exceeds five times the median curvature
+Low-stage flash tank + subcooler,compressor efficiency regime change,38.5,1.5054809230724733,0.010998413883047675,0.019437709082164023,"efficiency status changed from ('none|none', 'minimum') to ('none|none', 'none')"
+Low-stage flash tank + subcooler,pronounced curve knee,38.0,1.4999817161309494,0.004992377876994691,0.010998413883047675,local slope change exceeds five times the median curvature
+Low-stage flash tank + subcooler,pronounced curve knee,38.5,1.5054809230724733,0.010998413883047675,0.019437709082164023,local slope change exceeds five times the median curvature
+High-stage flash tank + subcooler,local maximum or minimum,31.5,1.8539814685444234,2.098450084497827e-05,-0.0002600259263636495,the COP slope changes sign
+Flash tanks in both stages + subcooler,local maximum or minimum,44.5,1.9479706684363491,0.00018183244716052371,-6.497083604894982e-06,the COP slope changes sign

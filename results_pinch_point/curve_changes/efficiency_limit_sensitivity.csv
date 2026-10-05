@@ -1,0 +1,5 @@
+architecture,grid_points,points_within_efficiency_limits,points_rejected_for_efficiency_limits,lowest_valid_high_stage_evaporation_C,highest_valid_high_stage_evaporation_C,interpretation
+Conventional cascade + subcooler,81,44,37,38.5,60.0,COP retained only where raw compressor efficiency stays within configured limits
+Low-stage flash tank + subcooler,81,44,37,38.5,60.0,COP retained only where raw compressor efficiency stays within configured limits
+High-stage flash tank + subcooler,81,81,0,20.0,60.0,COP retained only where raw compressor efficiency stays within configured limits
+Flash tanks in both stages + subcooler,81,81,0,20.0,60.0,COP retained only where raw compressor efficiency stays within configured limits

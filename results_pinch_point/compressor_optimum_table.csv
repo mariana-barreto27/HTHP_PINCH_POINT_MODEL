@@ -1,0 +1,5 @@
+configuration,optimal_high_stage_evaporation_temperature_C,maximum_overall_COP,low_stage_flash_pressure_bar,high_stage_flash_pressure_bar,low_stage_compressor_pressure_ratios,low_stage_compressor_isentropic_efficiencies,high_stage_compressor_pressure_ratios,high_stage_compressor_isentropic_efficiencies
+Conventional cascade + subcooler,51.62616460750568,1.557705311994774,,,4.98882128,0.60055894,5.89506657,0.55524667
+Low-stage flash tank + subcooler,60.0,1.7515627246159982,21.242517302058946,,2.66169281|2.24263383,0.71691536|0.73786831,4.61011291,0.61949435
+High-stage flash tank + subcooler,31.28677106875999,1.8539941245634795,,6.636547209025167,3.13534007,0.69323300,3.56108574|3.21249534,0.67194571|0.68937523
+Flash tanks in both stages + subcooler,44.73259578876672,1.9479809109591046,16.9643788254986,7.9936820644991915,2.12564098|2.01556445,0.74371795|0.74922178,2.73673023|2.66709094,0.71316349|0.71664545
