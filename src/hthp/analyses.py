@@ -5,9 +5,10 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
-from hthp.plots.style import COLORS, DASHES, add_minor_grid, save_figure
+from hthp.plots.style import COLORS, DASHES, MARKERS, add_minor_grid, save_figure
 
 from hthp import model
+from hthp.errors import failure_status
 
 
 def save_rows(rows, path):
@@ -52,10 +53,15 @@ def record(label, p, cycle):
         pinch_subcooler_K=p.DT_pinch_sc, condenser_subcooling_low_K=p.SUB_l,
         condenser_subcooling_high_K=p.SUB_h,
         intermediate_pressures_optimized=p.optimize_injection,
+        economizer_mass_fractions_optimized=cycle.get('economizer_mass_fractions_optimized',False),
+        economizer_mass_fraction_mode=('optimized' if p.optimize_economizer_mass_fraction else
+                                      'fixed' if p.fixed_economizer_mass_fraction else 'calculated'),
     )
     for prefix, stage, suffix in (("low", low, "l"), ("high", high, "h")):
         row[prefix + "_injection_pressure_bar"] = stage.get("P_int", "")
         row[prefix + "_injection_fraction"] = stage.get("injection_fraction", 0.0)
+        row[prefix + '_economizer_pinch_K'] = stage.get('economizer_pinch_K','')
+        row[prefix + '_economizer_required_UA_kW_K'] = stage.get('economizer_UA_kW_K','')
         row[prefix + "_discharge_C"] = stage["T2"]
         compressors = _compressors(stage, p, suffix)
         row[prefix + "_maximum_discharge_C"] = max(c["T_discharge"] for c in compressors)
@@ -75,14 +81,16 @@ def plot_curves(groups, xkey, ykey, xlabel, ylabel, title, path, p):
             ax.plot([row[xkey] for row in points],
                     [row.get(ykey, np.nan) if row["status"] == "valid" else np.nan
                      for row in points], color=COLORS[index % len(COLORS)],
-                    linestyle=DASHES[index % len(DASHES)], marker="none", label=label)
+                    linestyle=DASHES[index % len(DASHES)], marker=MARKERS[index % len(MARKERS)],
+                    markersize=4,label=label)
     if p.MODO_AGUA_COND == "SATURADO":
         water_condition = f"saturated water at {p.T_sat_w_cond:g} °C"
     else:
         water_condition = (
             f"water {p.T_w_cond_in:g} °C at {p.P_w_cond_liq:g} bar"
         )
-    conditions = f"{p.Q_target / 1000:g} kW | {water_condition}"
+    source_condition = f"ambient air at {p.T_source_in:g} °C" if p.F_source == "Air" else f"source water at {p.T_source_in:g} °C"
+    conditions = f"{p.Q_target / 1000:g} kW | {water_condition} | {source_condition}"
     ax.set(title=f"{title}\n{conditions}", xlabel=xlabel, ylabel=ylabel)
     add_minor_grid(ax)
     ax.legend(loc="best", ncols=2, fontsize=9)
@@ -95,7 +103,7 @@ def evaluate(label, p, temperature):
         cycle = model.ciclo_cascata(p, float(temperature))
         return record(label, p, cycle)
     except ValueError as error:
-        return dict(configuration=label, status="invalid", reason=str(error),
+        return dict(configuration=label, status=failure_status(error), reason=str(error),
                     low_condensation_C=float(temperature), source_inlet_C=p.T_source_in,
                     with_high_stage_subcooler=p.use_subcooler)
 

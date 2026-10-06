@@ -69,12 +69,56 @@ saves a short table and COP chart. Then select the configuration you want and
 run `--analise ph` to draw its cycle at its own optimum. `--analise curva`
 scans a temperature range for just the selected configuration.
 
-For flash tanks and economizers, each trial also searches its intermediate
-pressure. The temperature and pressure searches use `scipy.optimize.minimize_scalar`;
-the pressure search is bounded and seeded by a coarse grid. These are numerical
-optima within the model bounds, not proof of a global optimum. Adjust search
-resolution and operating conditions with `--tolerancia`, `--pontos`, `--carga`,
-`--fonte`, and `--temperatura-baixa`.
+For flash tanks, each trial searches intermediate pressure; vapor mass fraction
+follows phase equilibrium. For economizers in optimized-mass mode, each trial searches both intermediate
+pressure and injection mass fraction relative to total condenser flow. Injection
+leaves as saturated vapor. The main-liquid outlet enthalpy follows the adiabatic
+heat balance. The old 90% temperature rule no longer constrains the optimum; it
+is used only for feasible starting candidates. Direct component calls without
+a prescribed mass fraction retain the old thermal closure for compatibility.
+
+The economizer counterflow pinch is checked on duty-aligned profiles including
+the injection phase boundary. Actual pinch and required UA are exported. UA is
+a result, not fixed hardware: this compares thermodynamic sizing alternatives,
+not controls of one installed economizer with fixed area. Existing assumptions
+for the other heat exchangers and compressors are unchanged.
+
+Pressure/mass searches use feasible coarse seeds and bounded coordinate-wise
+refinement. These numerical candidates are not proof of a global optimum.
+The temperature search is adaptive with cached candidates rounded to **1 °C**
+by default; it does not sweep the entire range. `--tolerancia 1` sets this
+resolution. `--pontos` separately controls curve/map point count.
+Operating conditions use `--carga`, `--fonte`, and `--temperatura-baixa`.
+
+Settings are in `ComponentParams` (`src/hthp/configurations.py`):
+`economizer_mass_fraction_min/max` and `economizer_mass_fraction_tolerance`.
+The modes are now explicit:
+
+- `optimize_economizer_mass_fraction=True`: optimize mass and pressure, keeping
+  saturated vapor at injection. The 90% rule is only an initialization seed.
+- `optimize_economizer_mass_fraction=False`, `fixed_economizer_mass_fraction=False`
+  (default fixed-mode flag): return to the 90% thermal rule, saturated injection,
+  and mass fraction calculated by the energy balance. Mass guesses are ignored.
+- `optimize_economizer_mass_fraction=False`, `fixed_economizer_mass_fraction=True`:
+  use `economizer_mass_fraction_low/high` as prescribed fractions and calculate
+  the liquid outlet by energy balance, keeping saturated injection.
+
+Pressure can still be optimized in all modes with `optimize_injection=True`.
+To fix pressure too, set `optimize_injection=False`. Legacy
+`injection_fraction_low/high` specify log-pressure coordinates, not mass fractions.
+
+Fixed-flow closure now starts from an energy-consistent conservative estimate,
+with alternative seeds if an intermediate trial fails. Constraints are not
+relaxed. Curve rows distinguish `constraint_violation` (a verified constraint),
+`not_converged` (the numerical solver/search failed), and `evaluation_error`
+(an unclassified evaluation error). Not converging does not prove physical
+impossibility. Comparison continues when one architecture's optimum search fails.
+Rejected-point details are saved in `temperature_curves/rejected_points.csv`.
+Graph markers indicate actual samples; three points do not resolve a peak curve.
+
+Result tables include `low/high_injection_fraction`, pressure, economizer actual
+pinch, required UA and `economizer_mass_fractions_optimized`. The point-analysis
+console prints injection mass fractions and the curve run prints progress.
 
 ## Output
 

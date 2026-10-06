@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 import math
+import numpy as np
+from scipy.integrate import trapezoid
 
 from hthp.components.compressor import Compressor
 from hthp.components.compressor_performance import IsentropicEfficiencyModel
@@ -10,8 +12,9 @@ from hthp.components.evaporator import Evaporator
 from hthp.components.expansion_valve import ExpansionValve
 from hthp.components.mixer import Mixer
 from hthp.heat_sources.base import HeatSource, HeatSourceEvaluation
-from hthp.thermo.properties import critical_temperature_C
+from hthp.thermo.properties import critical_temperature_C, props_si_cached
 from hthp.thermo.state import ThermodynamicState
+from hthp.errors import PhysicalConstraintError
 
 
 @dataclass(frozen=True)
@@ -29,6 +32,7 @@ class EconomizerCycleConfig:
     motor_efficiency: float = 0.95
     compressor_efficiency_model: IsentropicEfficiencyModel | None = None
     external_subcooling_specific_heat_kJ_kg: float = 0.0
+    injection_mass_fraction: float | None = None
 
 
 @dataclass(frozen=True)
@@ -63,6 +67,8 @@ class EconomizerCycleResult:
     energy_balance_error_kW: float
     economizer_balance_error_kW: float
     heat_source: HeatSourceEvaluation
+    economizer_actual_minimum_approach_K: float
+    economizer_required_UA_kW_K: float
 
     @property
     def relative_energy_balance_error(self) -> float:
@@ -134,15 +140,20 @@ class EconomizerCycle:
             raise ValueError(
                 "Não há diferença de temperatura disponível no economizador."
             )
-        main_outlet_temperature = state_5_external.temperature_C - (
-            config.economizer_effectiveness
-            * available_temperature_difference
-        )
-        main_after_economizer = ThermodynamicState.from_pressure_temperature(
-            config.refrigerant,
-            high_pressure,
-            main_outlet_temperature,
-        )
+        injection_specific_heating = injection_vapor.enthalpy_kJ_kg-injection_after_valve.enthalpy_kJ_kg
+        if injection_specific_heating <= 0.0:
+            raise ValueError('A corrente de injeção não pode atingir vapor saturado recebendo calor.')
+        if config.injection_mass_fraction is None:
+            # Compatibilidade para chamadas antigas: fechamento térmico dos 90%.
+            main_outlet_temperature = state_5_external.temperature_C - config.economizer_effectiveness*available_temperature_difference
+            main_after_economizer = ThermodynamicState.from_pressure_temperature(
+                config.refrigerant,high_pressure,main_outlet_temperature)
+        else:
+            # Fração relativa à vazão TOTAL no condensador. Não impõe T de saída.
+            x = config.injection_mass_fraction
+            cooling = x/(1.0-x)*injection_specific_heating
+            main_after_economizer = ThermodynamicState.from_pressure_enthalpy(
+                config.refrigerant,high_pressure,state_5_external.enthalpy_kJ_kg-cooling)
         main_after_valve = valve.expand(
             config.refrigerant,
             main_after_economizer,
@@ -170,6 +181,25 @@ class EconomizerCycle:
         if not 0.0 < injection_fraction < 1.0:
             raise ValueError("A fração de injeção do economizador é inválida.")
         main_fraction = 1.0 - injection_fraction
+        # Perfis alinhados em calor, incluindo a fronteira de fase da injeção.
+        duty_per_total_mass = injection_fraction*injection_specific_heating
+        isothermal_injection = injection_after_valve.quality is not None
+        profile_grid = set(np.linspace(0.0,1.0,9 if isothermal_injection else 33))
+        hf = ThermodynamicState.from_pressure_quality(config.refrigerant,intermediate_pressure,0).enthalpy_kJ_kg
+        phase_position = 1.0-(hf-injection_after_valve.enthalpy_kJ_kg)/injection_specific_heating
+        if 0 < phase_position < 1:
+            profile_grid.add(float(phase_position))
+        profile_grid = np.array(sorted(profile_grid))
+        differences = []
+        for position in profile_grid:
+            hot_t = props_si_cached('T','P',high_pressure,'H',
+                (state_5_external.enthalpy_kJ_kg-position*main_specific_cooling)*1000,config.refrigerant)-273.15
+            cold_t = injection_vapor.temperature_C if isothermal_injection else props_si_cached('T','P',intermediate_pressure,'H',
+                (injection_after_valve.enthalpy_kJ_kg+(1-position)*injection_specific_heating)*1000,config.refrigerant)-273.15
+            differences.append(hot_t-cold_t)
+        actual_pinch = min(differences)
+        if actual_pinch < config.economizer_minimum_approach_K-1e-7 or actual_pinch <= 0:
+            raise PhysicalConstraintError(f'Pinch do economizador insuficiente: {actual_pinch:.5f} K.')
 
         low_compression = compressor.compress(
             config.refrigerant,
@@ -293,13 +323,17 @@ class EconomizerCycle:
                 economizer_hot_heat - economizer_cold_heat
             ),
             heat_source=source_evaluation,
+            economizer_actual_minimum_approach_K=actual_pinch,
+            economizer_required_UA_kW_K=total_mass_flow*duty_per_total_mass*float(trapezoid(1/np.array(differences),profile_grid)),
         )
 
     def _validate(self, evaporation_temperature_C: float) -> None:
         config = self.config
         if config.heating_capacity_kW <= 0.0:
             raise ValueError("A capacidade de aquecimento deve ser positiva.")
-        if not 0.0 < config.economizer_effectiveness <= 1.0:
+        if config.injection_mass_fraction is not None and not 0 < config.injection_mass_fraction < 1:
+            raise ValueError('A fração mássica de injeção deve estar entre 0 e 1.')
+        if config.injection_mass_fraction is None and not 0.0 < config.economizer_effectiveness <= 1.0:
             raise ValueError("A efetividade do economizador deve estar entre 0 e 1.")
         if config.economizer_minimum_approach_K < 0.0:
             raise ValueError("O pinch do economizador não pode ser negativo.")

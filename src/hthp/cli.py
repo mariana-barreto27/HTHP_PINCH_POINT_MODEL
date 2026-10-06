@@ -13,6 +13,7 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 import numpy as np
 
 from hthp import model
+from hthp.errors import failure_status
 from hthp.analyses import evaluate, ph_analysis, plot_curves, record, save_rows
 from hthp.configurations import ARCHITECTURES, ComponentParams
 from hthp.plots.style import MM, add_minor_grid, save_figure
@@ -50,13 +51,19 @@ def build_parser():
     parser.set_defaults(subcooler=True)
     parser.add_argument("--carga", type=float, default=170.0, help="carga útil em kW")
     parser.add_argument("--fonte", type=float, default=30.0, help="temperatura de entrada da fonte em °C")
+    parser.add_argument("--agua-saturada", type=float, default=None, help="temperatura de saturação da água em °C; ativa o modo SATURADO")
     parser.add_argument("--pontos", type=int, default=17, help="número de pontos em curvas e mapas")
-    parser.add_argument("--tolerancia", type=float, default=0.1,
-                        help="tolerância em °C da busca scipy.optimize pelo ponto ótimo")
+    parser.add_argument("--tolerancia", type=float, default=ComponentParams().T_cd_l_step,
+                        help="resolução em °C dos candidatos à condensação ótima da baixa")
     parser.add_argument("--temperatura-baixa", type=float, default=45.0,
                         help="condensação do estágio de baixa fixa nas análises de fonte/mapa")
     return parser
 
+
+def water_options(args):
+    if args.agua_saturada is None:
+        return {}
+    return dict(MODO_AGUA_COND="SATURADO", T_sat_w_cond=args.agua_saturada)
 
 def selected_case(args):
     if args.ciclo == "alta":
@@ -70,7 +77,7 @@ def selected_case(args):
     name = next((n for n, l, h in ARCHITECTURES if (l, h) == (low, high)), None)
     if name is None:
         raise ValueError("Combinação de componentes inválida.")
-    p = ComponentParams(
+    p = ComponentParams(**water_options(args),
         Q_target=args.carga * 1000,
         T_source_in=args.fonte,
         T_cd_l_step=args.tolerancia,
@@ -117,6 +124,9 @@ def run_point(label, p, args, output):
             result = cycle[stage]
             if result.get("P_int") is not None:
                 print(f"Pressão intermediária ({stage}): {result['P_int']:.3f} bar")
+                print(f"Fração mássica de injeção ({stage}): {result['injection_fraction']:.4%}")
+                if 'economizer_pinch_K' in result:
+                    print(f"Pinch economizador ({stage}): {result['economizer_pinch_K']:.4f} K; UA requerido: {result['economizer_UA_kW_K']:.4f} kW/K")
     print(f"COP: {cycle['COP']:.4f}")
     print(f"Potência dos compressores: {cycle['W_total'] / 1000:.2f} kW")
     print(f"Resultados: {output}")
@@ -203,7 +213,7 @@ def run_source(label, p, args, output):
 
 
 def run_comparison(args, output):
-    p = ComponentParams(Q_target=args.carga * 1000, T_source_in=args.fonte,
+    p = ComponentParams(**water_options(args),Q_target=args.carga * 1000, T_source_in=args.fonte,
                         T_cd_l_step=args.tolerancia, use_subcooler=args.subcooler)
     summaries = []
     for label, low, high in ARCHITECTURES:
@@ -211,20 +221,30 @@ def run_comparison(args, output):
                        optimize_injection=(low != "simple" or high != "simple"))
         cached = getattr(args, "_optima_cache", {}).get(label)
         if cached is None:
-            cycle, _ = model.otimizar_cascata(case)
-            cached = record(label, case, cycle)
+            try:
+                cycle, _ = model.otimizar_cascata(case)
+                cached = record(label,case,cycle)
+            except ValueError as error:
+                cached = dict(configuration=label,status=failure_status(error),reason=str(error))
         summaries.append(cached)
-        print(f"{label}: COP ótimo {cached['COP']:.4f}")
+        if cached['status']=='valid':
+            print(f"{label}: COP ótimo {cached['COP']:.4f}",flush=True)
+        else:
+            print(f"{label}: {cached['status']} — {cached['reason']}",flush=True)
     output.mkdir(parents=True, exist_ok=True)
     (output / "conditions.json").write_text(
         json.dumps({"cycle": "cascata", "analysis": "comparacao",
                     "parameters": asdict(p)}, indent=2, ensure_ascii=False), encoding="utf-8")
-    summaries.sort(key=lambda row: row["COP"], reverse=True)
+    summaries.sort(key=lambda row: row.get('COP',-np.inf),reverse=True)
     save_rows(summaries, output / "optima.csv")
     _plot_architecture_curves(args, p, output / "temperature_curves")
-    best = summaries[0]
-    print(f"Maior COP: {best['configuration']} | {best['COP']:.4f} | "
-          f"condensação da baixa: {best['low_condensation_C']:.2f} °C")
+    valid = [row for row in summaries if row['status']=='valid']
+    if valid:
+        best = valid[0]
+        print(f"Maior COP: {best['configuration']} | {best['COP']:.4f} | "
+              f"condensação da baixa: {best['low_condensation_C']:.2f} °C")
+    else:
+        print('A busca dos ótimos não encontrou casos convergidos; consulte optima.csv.')
     print(f"Resumo: {output}")
 
 
@@ -247,10 +267,15 @@ def _plot_architecture_curves(args, p, output):
             continue
         case = replace(p, low_technology=low, high_technology=high,
                        optimize_injection=(low != "simple" or high != "simple"))
+        print(f'Calculando curvas: {label} — {args.pontos} temperaturas',flush=True)
         rows = [evaluate(label, case, float(t)) for t in temperatures]
         groups.append((label, rows))
         combined_rows.extend(rows)
     save_rows(combined_rows, output / "architecture_temperature_sweeps.csv")
+    rejected = [row for row in combined_rows if row['status']!='valid']
+    save_rows(rejected,output/'rejected_points.csv')
+    for status in sorted(set(row['status'] for row in rejected)):
+        print(f'{status}: {sum(row["status"]==status for row in rejected)} pontos; detalhes em rejected_points.csv',flush=True)
     x_label = "Low-stage condensation temperature [°C]"
     plot_curves(groups, "low_condensation_C", "COP", x_label, "Overall COP [-]",
                 "Cascade COP — flash tank and economizer comparison",
@@ -309,7 +334,7 @@ def run_selected_analysis(label, p, args):
 def run_all_architectures(args):
     args._optima_cache = {}
     args._curve_cache = {}
-    base = ComponentParams(
+    base = ComponentParams(**water_options(args),
         Q_target=args.carga * 1000,
         T_source_in=args.fonte,
         T_cd_l_step=args.tolerancia,

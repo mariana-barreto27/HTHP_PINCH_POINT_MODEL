@@ -15,6 +15,7 @@ import numpy as np
 from scipy.optimize import minimize_scalar
 
 from hthp import model as ref
+from hthp.errors import SolverConvergenceError, SearchFailureError
 from hthp.components.compressor_performance import QuadraticPressureRatioEfficiency
 from hthp.cycles.flash_tank_cycle import FlashTankCycle, FlashTankCycleConfig
 from hthp.cycles.economizer_cycle import EconomizerCycle, EconomizerCycleConfig
@@ -28,13 +29,22 @@ class ComponentParams(ref.Params):
     low_technology: str = "simple"
     high_technology: str = "simple"
     use_subcooler: bool = True  # Same high-stage water subcooler as the reference.
+    T_cd_l_step: float = 1.0  # resolução da busca de temperatura [°C]
     economizer_effectiveness: float = 0.90
     economizer_minimum_approach_K: float = 5.0
+    optimize_economizer_mass_fraction: bool = True
+    # False retorna ao fechamento térmico dos 90%; modo fixo é explícito.
+    fixed_economizer_mass_fraction: bool = False
+    economizer_mass_fraction_low: float = 0.03
+    economizer_mass_fraction_high: float = 0.10
+    economizer_mass_fraction_min: float = 0.001
+    economizer_mass_fraction_max: float = 0.60
+    economizer_mass_fraction_tolerance: float = 0.005
     optimize_injection: bool = True
     injection_fraction_low: float = 0.5
     injection_fraction_high: float = 0.5
-    injection_fraction_min: float = 0.05
-    injection_fraction_max: float = 0.95
+    injection_fraction_min: float = 0.01
+    injection_fraction_max: float = 0.99
     injection_tolerance: float = 0.005
     injection_grid_points: int = 7
     injection_coordinate_passes: int = 3
@@ -94,7 +104,9 @@ def _normalized_stage(p, stage, Tev, Tcd, q_sc):
         vapor_fraction = result.flash_vapor_fraction
     elif technology == "economizer":
         kwargs.update(economizer_effectiveness=p.economizer_effectiveness,
-                      economizer_minimum_approach_K=p.economizer_minimum_approach_K)
+                      economizer_minimum_approach_K=p.economizer_minimum_approach_K,
+                      injection_mass_fraction=(p.economizer_mass_fraction_high if stage == 'h' else p.economizer_mass_fraction_low)
+                      if p.optimize_economizer_mass_fraction or p.fixed_economizer_mass_fraction else None)
         result = _solve_economizer(EconomizerCycleConfig(**kwargs))
         vapor_fraction = result.injection_mass_fraction
     else:
@@ -149,6 +161,9 @@ def _to_reference_dict(p, stage, Tev, Tcd, normalized, mass, qsc):
                   COP=(Qcond+Qsc)/W, residual=Qcond+Qsc-W-Qev,
                   compressors=compressors, component_states=normalized["states"],
                   injection_fraction=1-normalized["main_fraction"])
+    if hasattr(normalized['result'],'economizer_actual_minimum_approach_K'):
+        result['economizer_pinch_K'] = normalized['result'].economizer_actual_minimum_approach_K
+        result['economizer_UA_kW_K'] = normalized['result'].economizer_required_UA_kW_K*scale
     return result
 
 
@@ -174,7 +189,7 @@ def calcular_alta_com_componentes(p, T_ev_h, T_cd_h):
         error = abs(expected-qsc)
         qsc = expected if error < previous_error else 0.5*(qsc+expected)
         previous_error = error
-    raise ValueError("Subcooler/component energy closure did not converge.")
+    raise SolverConvergenceError("Subcooler/component energy closure did not converge.")
 
 
 def calcular_baixa_com_componentes(p, T_ev_l, T_cd_l, Q_cond_required):
@@ -193,8 +208,16 @@ The pressure search is distinct from the unchanged reference Tcond optimizer.
     fields = [name for name, technology in (
         ("injection_fraction_low", p.low_technology),
         ("injection_fraction_high", p.high_technology)) if technology != "simple"]
+    pressure_fields = fields.copy()
+    if p.optimize_economizer_mass_fraction:
+        fields += [name for name, technology in (
+            ('economizer_mass_fraction_low',p.low_technology),
+            ('economizer_mass_fraction_high',p.high_technology)) if technology == 'economizer']
+    if not 0 < p.economizer_mass_fraction_min < p.economizer_mass_fraction_max < 1:
+        raise ValueError('Limites inválidos da fração mássica do economizador.')
     cache = {}
     best = None
+    rejection_reasons = {}
 
     def evaluate(values):
         nonlocal best
@@ -204,19 +227,55 @@ The pressure search is distinct from the unchanged reference Tcond optimizer.
             try:
                 result = ref.ciclo_cascata(case, T_cd_l)
                 result["injection_search_fractions"] = dict(zip(fields, key))
+                result['economizer_mass_fractions_optimized'] = bool(p.optimize_economizer_mass_fraction and any('mass' in f for f in fields))
                 cache[key] = result
                 if best is None or result["COP"] > best["COP"]:
                     best = result
-            except ValueError:
+            except ValueError as error:
                 cache[key] = None
+                message = str(error)
+                rejection_reasons[message] = rejection_reasons.get(message,0)+1
         return cache[key]
 
     values = np.array([getattr(p, f) for f in fields], dtype=float)
-    grid = np.linspace(p.injection_fraction_min, p.injection_fraction_max, p.injection_grid_points)
+    grids = {name: np.linspace(p.economizer_mass_fraction_min,p.economizer_mass_fraction_max,p.injection_grid_points)
+             if 'mass' in name else np.linspace(p.injection_fraction_min,p.injection_fraction_max,p.injection_grid_points)
+             for name in fields}
     evaluate(values)
+    if any('mass' in name for name in fields):
+        seed = values.copy()
+        for i,name in enumerate(fields):
+            if 'mass' in name:
+                seed[i] = p.economizer_mass_fraction_min
+        evaluate(seed)
+        # A pequena vazão de injeção semeia pressões viáveis antes da busca conjunta.
+        from itertools import product
+        pressure_seeds = {name: np.unique(np.append(grids[name][::2],grids[name][len(grids[name])//2])) for name in pressure_fields}
+        for pressures in product(*(pressure_seeds[name] for name in pressure_fields)):
+            trial = seed.copy()
+            trial[:len(pressure_fields)] = pressures
+            evaluate(trial)
+            # O fechamento antigo é apenas uma semente viável; a busca final
+            # libera massa e pressão e não impõe os 90% à solução otimizada.
+            thermal_kwargs = dict(zip(fields,trial))
+            for name in fields:
+                if 'mass' in name:
+                    thermal_kwargs[name] = None
+            try:
+                thermal = ref.ciclo_cascata(replace(p,_evaluating_injection=True,**thermal_kwargs),T_cd_l)
+                for i,name in enumerate(fields):
+                    if 'mass' in name:
+                        stage = 'low' if name.endswith('low') else 'high'
+                        trial[i] = np.clip(thermal[stage]['injection_fraction'],p.economizer_mass_fraction_min,p.economizer_mass_fraction_max)
+                evaluate(trial)
+            except ValueError:
+                pass
+        if best:
+            values = np.array([best['injection_search_fractions'][f] for f in fields])
     # Joint coarse seeding avoids rejecting a two-component configuration just
     # because its initial geometric pressures were infeasible.
-    if len(fields) == 2:
+    if len(fields) == 2 and not any('mass' in name for name in fields):
+        grid = grids[fields[0]]
         for a in grid[::2]:
             for b in grid[::2]:
                 evaluate([a, b])
@@ -225,12 +284,17 @@ The pressure search is distinct from the unchanged reference Tcond optimizer.
     for _ in range(p.injection_coordinate_passes):
         previous = values.copy()
         for dimension in range(len(fields)):
+            field = fields[dimension]
+            grid = grids[field]
             candidates = []
             for value in grid:
                 trial = values.copy(); trial[dimension] = value
                 result = evaluate(trial)
                 if result is not None:
                     candidates.append((result["COP"], value))
+            current = evaluate(values)
+            if current is not None:
+                candidates.append((current['COP'],values[dimension]))
             if not candidates:
                 continue
             _, seed = max(candidates)
@@ -239,16 +303,34 @@ The pressure search is distinct from the unchanged reference Tcond optimizer.
                 trial = values.copy(); trial[dimension] = value
                 result = evaluate(trial)
                 return 1e6 if result is None else -result["COP"]
-            result = minimize_scalar(objective, method="bounded",
-                                     bounds=(grid[max(0,index-1)], grid[min(len(grid)-1,index+1)]),
-                                     options={"xatol": p.injection_tolerance, "maxiter": 40})
+            lower,upper = grid[max(0,index-1)],grid[min(len(grid)-1,index+1)]
+            # Refinar a fronteira viável evita que uma região penalizada esconda
+            # o melhor ponto junto ao pinch, sobretudo na coordenada de massa.
+            if 'mass' in field and objective(upper) == 1e6:
+                feasible,infeasible = seed,upper
+                for _ in range(12):
+                    middle = 0.5*(feasible+infeasible)
+                    if objective(middle) == 1e6:
+                        infeasible = middle
+                    else:
+                        feasible = middle
+                upper = feasible
+            tolerance = p.economizer_mass_fraction_tolerance if 'mass' in field else p.injection_tolerance
+            if upper-lower <= tolerance:
+                objective(seed)
+                continue
+            result = minimize_scalar(objective, method="bounded",bounds=(lower,upper),
+                                     options={"xatol": tolerance, "maxiter": 40})
             if result.success:
                 objective(result.x)
             if best:
                 values = np.array([best["injection_search_fractions"][f] for f in fields])
-        if np.max(abs(values-previous)) < p.injection_tolerance:
+        tolerances = np.array([p.economizer_mass_fraction_tolerance if 'mass' in f else p.injection_tolerance for f in fields])
+        if np.all(abs(values-previous) < tolerances):
             break
     if best is None:
-        raise ValueError("No feasible flash/economizer pressure found.")
+        details = '; '.join(message for message,_ in sorted(rejection_reasons.items(),key=lambda item:item[1],reverse=True)[:2])
+        raise SearchFailureError('A busca não encontrou pressão/fração convergida. Não é prova de inviabilidade física. Motivos observados: '+details)
     best["injection_search_evaluations"] = len(cache)
+    best['injection_search_rejected_evaluations'] = sum(rejection_reasons.values())
     return best

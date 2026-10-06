@@ -10,6 +10,7 @@ from hthp.plots.heatmap import heatmap
 from hthp.plots.cycles import make_cycle, plot_ph, plot_ts
 from hthp.plots.cycles.diagrams import plot_cycles
 from hthp.plots.style import COLORS, DASHES, MARKERS, MM, add_minor_grid
+from hthp.errors import PhysicalConstraintError, SolverConvergenceError, SearchFailureError
 
 # ============================================================
 # MODELO SIMPLIFICADO PARA DIMENSIONAMENTO DA HEAT PUMP
@@ -82,7 +83,7 @@ CONTOUR_STEP_CASCATA = 0.2
 class Params:
     # Condições externas
     F_source: str = "Air"                # "Air" = ar ou "Water" = água
-    T_source_in: float = 30.0            # temperatura de entrada da fonte [°C]
+    T_source_in: float = 25.0            # temperatura de entrada da fonte [°C]
     P_source: float    = 1.0             # pressão da fonte [bar]
     
     # Estado de entrada da água no condensador.
@@ -162,9 +163,9 @@ class Params:
     eta_is_max: float = 0.90
     
     # Busca da temperatura intermediária
-    T_cd_l_min: float = 25.0
-    T_cd_l_crit_margin: float = 7.0
-    T_cd_l_step: float = 5.0
+    T_cd_l_min: float = 30.0
+    T_cd_l_crit_margin: float = 8.0
+    T_cd_l_step: float | None = None  # padrão central em ComponentParams
     T_cd_l_step_map: float = 5.0
 
     @property
@@ -536,19 +537,31 @@ def resolver_entradas_externas(p, T_cd_l=None):
     m_dot_source = getattr(p, nome_vazao_fonte) * rho_TP(p.F_source, p.T_source_in, p.P_source) / 3600.0
     m_dot_w_cond = p.V_dot_w_cond * rho_w_in / 3600.0
     h_s_in = h_TP(p.F_source, p.T_source_in, p.P_source)
-    # Chute independente dos deltas informados no modo DELTA_T.
-    deltas = np.array([1.0, 1.0])
+    # A saída estimada para Q_target é uma semente conservadora para capacidade
+    # fixa. O antigo chute de 1 K podia reprovar o pinch antes da convergência.
+    guess_water = T_PH('Water',p.P_w_cond,h_w_in+p.Q_target/m_dot_w_cond)
+    guess_source = T_PH(p.F_source,p.P_source,h_s_in-p.Q_target/m_dot_source)
+    deltas = np.array([max(0.0,guess_water-p.T_w_cond_in),max(1e-6,p.T_source_in-guess_source)])
+    seeds = [deltas.copy(),deltas*np.array([1.0,0.7]),deltas*np.array([1.0,0.4])]
+    attempts = 0
     for _ in range(100):
         caso = replace(p,
                        DT_w_cond=float(deltas[0]), DT_source=float(deltas[1]))
         _, T_cd = temperaturas_condensador(caso)
         _, T_ev = temperaturas_evaporador(caso)
-        high = calcular_estagio_alta(caso, T_ev if T_cd_l is None else
-                                    T_cd_l - p.DT_pinch_cascade, T_cd)
-        Q_source = high["Q_ev"]
-        if T_cd_l is not None:
-            low = calcular_estagio_baixa(caso, T_ev, T_cd_l, high["Q_ev"])
-            Q_source = low["Q_ev"]
+        try:
+            high = calcular_estagio_alta(caso, T_ev if T_cd_l is None else
+                                        T_cd_l - p.DT_pinch_cascade, T_cd)
+            Q_source = high['Q_ev']
+            if T_cd_l is not None:
+                low = calcular_estagio_baixa(caso,T_ev,T_cd_l,high['Q_ev'])
+                Q_source = low['Q_ev']
+        except ValueError as error:
+            attempts += 1
+            if attempts < len(seeds):
+                deltas = seeds[attempts].copy()
+                continue
+            raise SolverConvergenceError(f'Fechamento das vazões falhou após {len(seeds)} sementes; última restrição intermediária: {error}') from error
         if Q_source <= 0 or high["Q_cond"] <= 0:
             raise ValueError("Cargas térmicas não positivas no modo VAZAO.")
         T_w = T_PH("Water", p.P_w_cond, h_w_in + high["Q_cond"] / m_dot_w_cond)
@@ -562,7 +575,7 @@ def resolver_entradas_externas(p, T_cd_l=None):
         if np.max(np.abs(novos - deltas)) < 1e-4 and abs(erro_fonte) < 1e-4:
             return caso
         deltas = 0.5 * deltas + 0.5 * novos
-    raise ValueError("Modo VAZAO não convergiu para as vazões e condições informadas.")
+    raise SolverConvergenceError("Modo VAZAO não convergiu para as vazões e condições informadas.")
 
 
 def ciclo_alta(p):
@@ -603,7 +616,7 @@ def ciclo_cascata(p, T_cd_l):
     high = calcular_estagio_alta(p, T_ev_h, T_cd_h)
 
     low = calcular_estagio_baixa(p, T_ev_l, T_cd_l, high["Q_ev"])
-    if not low["N_feasible"]: raise ValueError(f"Rotação do compressor de baixa fora da faixa: {low['N_rpm']:.0f} rpm")
+    if not low["N_feasible"]: raise PhysicalConstraintError(f"Rotação do compressor de baixa fora da faixa: {low['N_rpm']:.0f} rpm")
 
     agua = estado_agua_condensador(p, high, T_w_cond_out)
     T_w_cond_out = agua["T_w_cond_out"]
@@ -630,22 +643,43 @@ def otimizar_cascata(p, step=None):
     Tmax = T_cd_l_max(p)
     if p.T_cd_l_min >= Tmax: raise ValueError("Faixa de T_cd,l inválida para o refrigerante de baixa.")
 
-    xatol = p.T_cd_l_step if step is None else step
+    resolution = p.T_cd_l_step if step is None else step
+    if resolution is None:
+        from hthp.configurations import ComponentParams
+        resolution = ComponentParams().T_cd_l_step
+    if not np.isfinite(resolution) or resolution <= 0:
+        raise ValueError('A resolução da temperatura deve ser positiva.')
+    lower = np.ceil(p.T_cd_l_min/resolution)*resolution
+    upper = np.floor(Tmax/resolution)*resolution
+    if lower > upper:
+        raise ValueError('Nenhum candidato cabe na faixa com a resolução escolhida.')
     avaliados = []
+    cache = {}
 
     def objetivo(T_cd_l):
+        temperature = float(np.clip(np.round(T_cd_l/resolution)*resolution,lower,upper))
+        key = round(temperature,10)
+        if key in cache:
+            return cache[key]
         try:
-            ciclo = ciclo_cascata(p, float(T_cd_l))
+            ciclo = ciclo_cascata(p, temperature)
             avaliados.append(ciclo)
-            return -ciclo["COP"]
+            cache[key] = -ciclo['COP']
         except ValueError:
-            return 1e6
+            cache[key] = 1e6
+        return cache[key]
 
-    res = minimize_scalar(objetivo, bounds=(p.T_cd_l_min, Tmax), method="bounded",
-                          options={"xatol": xatol})
+    if lower == upper:
+        objetivo(lower)
+    else:
+        minimize_scalar(objetivo,bounds=(lower,upper),method='bounded',options={'xatol':resolution/2})
+    if avaliados:
+        center = max(avaliados,key=lambda c:c['COP'])['T_cd_l']
+        for offset in (-resolution,resolution):
+            objetivo(center+offset)
 
     if not avaliados:
-        raise ValueError("Nenhum ponto viável encontrado para a cascata.")
+        raise SearchFailureError("A busca não encontrou ponto convergido para a cascata; isso não demonstra inviabilidade física.")
 
     melhor = max(avaliados, key=lambda x: x["COP"])
     return melhor, avaliados
