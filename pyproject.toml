@@ -12,7 +12,11 @@ dependencies = [
     "CoolProp>=7.0",
     "matplotlib>=3.8",
     "numpy>=1.26",
+    "scipy>=1.11",
 ]
+
+[project.scripts]
+hthp = "hthp.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

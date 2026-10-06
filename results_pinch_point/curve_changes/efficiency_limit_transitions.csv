@@ -1,3 +1,0 @@
-architecture,temperature_before_C,temperature_after_C,COP_before,COP_after,low_stage_status_before,low_stage_status_after,high_stage_status_before,high_stage_status_after,minimum_efficiency
-Conventional cascade + subcooler,38.0,38.5,1.456613739465588,1.460150616635835,none,none,minimum,none,0.4
-Low-stage flash tank + subcooler,38.0,38.5,1.4999817161309494,1.5054809230724733,none|none,none|none,minimum,none,0.4

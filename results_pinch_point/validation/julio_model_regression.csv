@@ -1,9 +1,0 @@
-variable,label,unit,julio_model_value,modular_model_value,absolute_difference,relative_difference_percent,status
-high_stage_evaporation_temperature_C,High-stage evaporation temperature,°C,35.0,35.0,0.0,0.0,MATCH
-low_stage_condensation_temperature_C,Low-stage condensation temperature,°C,45.0,45.0,0.0,0.0,MATCH
-main_condenser_heat_kW,Main condenser duty,kW,101.13702250701283,101.13702250701283,0.0,0.0,MATCH
-subcooler_heat_kW,Subcooler duty,kW,18.862977492987174,18.862977492987174,0.0,0.0,MATCH
-total_useful_heat_kW,Total useful heat,kW,120.0,120.0,0.0,0.0,MATCH
-total_shaft_power_kW,Total shaft power,kW,75.99413902816637,75.99413902816633,-4.263256414560601e-14,-5.609980544658152e-14,MATCH
-overall_COP_shaft,Overall shaft COP,-,1.5790691431548867,1.5790691431548876,8.881784197001252e-16,5.624696192375701e-14,MATCH
-source_mass_flow_kg_s,Heat-source mass flow,kg/s,4.374427216064658,4.374427216064645,-1.2434497875801753e-14,-2.842543094587852e-13,MATCH
