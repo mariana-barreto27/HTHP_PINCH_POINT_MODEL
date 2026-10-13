@@ -83,16 +83,29 @@ def _label_states(ax, all_points):
             dx, dy = pixel - center
             preferred = np.arctan2(dy, dx)
             angles = preferred + directions
-            offsets = [(13 * np.cos(a), 13 * np.sin(a)) for a in angles]
+            # Ejector/IHX cycles have many almost-coincident states. Allow
+            # farther callouts for these diagrams without moving state points
+            # or changing the established labels of the simpler cycles.
+            radii = (13, 25, 37) if len(points) > 10 else (13,)
+            offsets = [(radius * np.cos(a), radius * np.sin(a))
+                       for radius in radii for a in angles]
             def clearance(offset):
                 target = pixel + np.asarray(offset) * ax.figure.dpi / 72
                 return min((np.linalg.norm(target - prior) for prior in placed),
                            default=100.0)
-            offset = max(offsets, key=clearance)
+            if len(points) > 10:
+                acceptable = [offset for offset in offsets
+                              if clearance(offset) >= 23 * ax.figure.dpi / 72]
+                offset = (min(acceptable, key=lambda v: np.hypot(*v))
+                          if acceptable else max(offsets, key=clearance))
+            else:
+                offset = max(offsets, key=clearance)
             placed.append(pixel + np.asarray(offset) * ax.figure.dpi / 72)
             ax.annotate(str(label), xy=point, xytext=offset, textcoords="offset points",
                         ha="center", va="center", fontsize=9, fontweight="bold",
                         color=color, annotation_clip=False, zorder=7,
+                        arrowprops=(dict(arrowstyle="-", color=color, lw=0.6)
+                                    if np.hypot(*offset) > 20 else None),
                         bbox=dict(boxstyle="circle,pad=0.32", facecolor="white",
                                   edgecolor=color, linewidth=1.15))
 

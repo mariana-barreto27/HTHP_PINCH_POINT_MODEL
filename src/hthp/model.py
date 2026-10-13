@@ -591,7 +591,8 @@ def ciclo_alta(p):
 
 def ciclo_cascata(p, T_cd_l):
     if getattr(p, "optimize_injection", False) and not getattr(p, "_evaluating_injection", False) and (
-        p.low_technology != "simple" or p.high_technology != "simple"
+        p.low_technology in ("flash_tank", "economizer")
+        or p.high_technology in ("flash_tank", "economizer")
     ):
         from hthp.configurations import otimizar_injecao
         return otimizar_injecao(p, T_cd_l)
@@ -732,7 +733,7 @@ def plot_perfis_trocadores(p, ciclo):
         low = ciclo["low"]
         # Cascata: ciclo de baixa condensa; ciclo de alta evapora.
         T_low_casc = perfil_temperatura_entalpia(low["fluid"], low["P_cd"], low["H2"], low["H3"])
-        T_high_casc = perfil_temperatura_entalpia(high["fluid"], high["P_ev"], high["H1"], high["H5"])
+        T_high_casc = perfil_temperatura_entalpia(high["fluid"], high["P_ev"], high.get("H_evap_out", high["H1"]), high["H5"])
         formatar_perfil_trocador(ax_casc, x, T_low_casc, T_high_casc, low["fluid"], high["fluid"], "Cascade", p.DT_pinch_cascade)
 
     # Evaporador ligado à fonte: baixa na cascata, alta no ciclo simples.
@@ -740,7 +741,7 @@ def plot_perfis_trocadores(p, ciclo):
     H_source_out = h_TP(p.F_source, ciclo["T_source_out"], p.P_source)
     T_source = perfil_temperatura_entalpia(p.F_source, p.P_source, H_source_in, H_source_out)
     H_evap_in = evap["H4"] if cascata else evap["H5"]
-    T_ref_evap = perfil_temperatura_entalpia(evap["fluid"], evap["P_ev"], evap["H1"], H_evap_in)
+    T_ref_evap = perfil_temperatura_entalpia(evap["fluid"], evap["P_ev"], evap.get("H_evap_out", evap["H1"]), H_evap_in)
     formatar_perfil_trocador(ax_evap, x, T_source, T_ref_evap, p.F_source, evap["fluid"], "Evaporator", p.DT_pinch_evap)
 
     # Subresfriador externo: refrigerante de alta 3 -> 4; água em contracorrente.

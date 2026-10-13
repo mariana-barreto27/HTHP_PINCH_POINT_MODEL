@@ -20,9 +20,11 @@ from hthp.plots.heatmap import heatmap
 
 
 TECHNOLOGY = {
-    "simples": "simple", "flash": "flash_tank", "economizador": "economizer"
+    "simples": "simple", "flash": "flash_tank", "economizador": "economizer",
+    "ejetor": "ejector",
 }
-LABEL = {"simple": "simple", "flash_tank": "flash_tank", "economizer": "economizer"}
+LABEL = {"simple": "simple", "flash_tank": "flash_tank", "economizer": "economizer",
+         "ejector": "ejector_ihx"}
 
 
 def build_parser():
@@ -39,7 +41,7 @@ def build_parser():
     parser.add_argument("--componente", choices=tuple(TECHNOLOGY), default="simples",
                         help="componente aplicado ao(s) estágio(s) escolhido(s)")
     parser.add_argument("--estagio", choices=("baixa", "alta", "ambos"), default="ambos",
-                        help="estágio que recebe o flash tank/economizador")
+                        help="estágio que recebe flash tank, economizador ou ejetor com IHX")
     parser.add_argument("--analise", choices=("ponto", "curva", "ph", "mapa", "fonte", "comparacao", "all"),
                         default="ponto", help="resultado que será calculado")
     subcooler = parser.add_mutually_exclusive_group()
@@ -77,7 +79,7 @@ def selected_case(args):
         low_technology=low,
         high_technology=high,
         use_subcooler=args.subcooler,
-        optimize_injection=(low != "simple" or high != "simple"),
+        optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)),
     )
     if args.ciclo == "alta":
         name = "High-stage cycle"
@@ -117,6 +119,11 @@ def run_point(label, p, args, output):
             result = cycle[stage]
             if result.get("P_int") is not None:
                 print(f"Pressão intermediária ({stage}): {result['P_int']:.3f} bar")
+            if "P_separator" in result:
+                print(f"Ejetor ({stage}): evaporação {result['P_ev']:.3f} bar; "
+                      f"sucção {result['P_suction']:.3f} bar; "
+                      f"razão de arraste {result['ejector_entrainment_ratio']:.4f}; "
+                      f"IHX {result['Q_ihx']/1000:.2f} kW (interno)")
     print(f"COP: {cycle['COP']:.4f}")
     print(f"Potência dos compressores: {cycle['W_total'] / 1000:.2f} kW")
     print(f"Resultados: {output}")
@@ -208,7 +215,7 @@ def run_comparison(args, output):
     summaries = []
     for label, low, high in ARCHITECTURES:
         case = replace(p, low_technology=low, high_technology=high,
-                       optimize_injection=(low != "simple" or high != "simple"))
+                       optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)))
         cached = getattr(args, "_optima_cache", {}).get(label)
         if cached is None:
             cycle, _ = model.otimizar_cascata(case)
@@ -246,14 +253,14 @@ def _plot_architecture_curves(args, p, output):
             combined_rows.extend(rows)
             continue
         case = replace(p, low_technology=low, high_technology=high,
-                       optimize_injection=(low != "simple" or high != "simple"))
+                       optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)))
         rows = [evaluate(label, case, float(t)) for t in temperatures]
         groups.append((label, rows))
         combined_rows.extend(rows)
     save_rows(combined_rows, output / "architecture_temperature_sweeps.csv")
     x_label = "Low-stage condensation temperature [°C]"
     plot_curves(groups, "low_condensation_C", "COP", x_label, "Overall COP [-]",
-                "Cascade COP — flash tank and economizer comparison",
+                "Cascade COP — architecture comparison",
                 output / "cop_vs_low_stage_condensation", p)
     plot_curves(groups, "low_condensation_C", "W_shaft_kW", x_label,
                 "Compressor shaft power [kW]",
@@ -319,7 +326,7 @@ def run_all_architectures(args):
     for label, low, high in ARCHITECTURES:
         print(f"\n=== {label} ===", flush=True)
         p = replace(base, low_technology=low, high_technology=high,
-                    optimize_injection=(low != "simple" or high != "simple"))
+                    optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)))
         for analysis in analyses:
             args.analise = analysis
             run_selected_analysis(label, p, args)

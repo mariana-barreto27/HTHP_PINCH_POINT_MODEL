@@ -51,12 +51,23 @@ def record(label, p, cycle):
         pinch_cascade_K=p.DT_pinch_cascade, pinch_evaporator_K=p.DT_pinch_evap,
         pinch_subcooler_K=p.DT_pinch_sc, condenser_subcooling_low_K=p.SUB_l,
         condenser_subcooling_high_K=p.SUB_h,
-        intermediate_pressures_optimized=p.optimize_injection,
+        intermediate_pressures_optimized=p.optimize_injection and any(
+            technology in ("flash_tank", "economizer")
+            for technology in (p.low_technology, p.high_technology)),
     )
     for prefix, stage, suffix in (("low", low, "l"), ("high", high, "h")):
         row[prefix + "_injection_pressure_bar"] = stage.get("P_int", "")
         row[prefix + "_injection_fraction"] = stage.get("injection_fraction", 0.0)
         row[prefix + "_discharge_C"] = stage["T2"]
+        row[prefix + "_evaporator_pressure_bar"] = stage["P_ev"]
+        row[prefix + "_suction_pressure_bar"] = stage.get("P_suction", stage["P_ev"])
+        if "P_separator" in stage:
+            for field in ("P_separator", "ejector_entrainment_ratio",
+                          "ejector_pressure_lift_ratio", "separator_vapor_quality",
+                          "ejector_closure_residual", "separator_mass_residual",
+                          "Q_ihx", "ihx_balance_residual", "ihx_minimum_approach_K",
+                          "compressor_superheat_K", "evaporator_superheat_K"):
+                row[prefix + "_" + field] = stage[field]
         compressors = _compressors(stage, p, suffix)
         row[prefix + "_maximum_discharge_C"] = max(c["T_discharge"] for c in compressors)
         row[prefix + "_minimum_efficiency"] = min(c["eta_is"] for c in compressors)
@@ -82,10 +93,15 @@ def plot_curves(groups, xkey, ykey, xlabel, ylabel, title, path, p):
         water_condition = (
             f"water {p.T_w_cond_in:g} °C at {p.P_w_cond_liq:g} bar"
         )
-    conditions = f"{p.Q_target / 1000:g} kW | {water_condition}"
+    subcooler_condition = "high-stage subcooler" if p.use_subcooler else "no subcooler"
+    conditions = f"{p.Q_target / 1000:g} kW | {water_condition} | {subcooler_condition}"
     ax.set(title=f"{title}\n{conditions}", xlabel=xlabel, ylabel=ylabel)
     add_minor_grid(ax)
-    ax.legend(loc="best", ncols=2, fontsize=9)
+    if len(groups) > 7:
+        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.23),
+                  ncols=2, fontsize=8)
+    else:
+        ax.legend(loc="best", ncols=2, fontsize=9)
     save_figure(fig, path)
     plt.close(fig)
 
@@ -128,6 +144,22 @@ def ph_analysis(p, cases, output_dir, cycles=None):
                 if technology == "simple":
                     pairs = [(1, 2, "-"), (2, 3, "-"), (3, "3E", "-"), ("3E", 4, "-"), (4, 1, "-")]
                     main_loop = [1, 2, 3, "3E", 4]
+                elif technology == "ejector":
+                    pairs = [("suction", "discharge", "-"),
+                             ("discharge", "condenser_out", "-"),
+                             ("condenser_out", "subcooler_out", "-"),
+                             ("subcooler_out", "motive_in", "-"),
+                             ("motive_in", "nozzle_out", "-"),
+                             ("nozzle_out", "mixing", "--"),
+                             ("evaporator_out", "mixing", "--"),
+                             ("mixing", "ejector_out", "-"),
+                             ("ejector_out", "separator_vapour", "--"),
+                             ("ejector_out", "separator_liquid", "--"),
+                             ("separator_vapour", "suction", "-"),
+                             ("separator_liquid", "evaporator_in", "-"),
+                             ("evaporator_in", "evaporator_out", "-")]
+                    # Branched ejector processes are not one simple polygon.
+                    main_loop = []
                 else:
                     pairs = [("1", "2", "-"), ("2", "3", "--"), ("3", "4", "-"),
                              ("4", "5", "-"), ("5", "5E", "-")]

@@ -1,4 +1,4 @@
-"""Flash tank and economizer options for the cascade model.
+"""Flash tank, economizer and ejector/IHX options for the cascade model.
 
 All external conditions, flow closure, water phase calculation, condenser and
 subcooler pinches, compressor coefficients, COP definition and intermediate
@@ -19,6 +19,7 @@ from hthp.components.compressor_performance import QuadraticPressureRatioEfficie
 from hthp.cycles.flash_tank_cycle import FlashTankCycle, FlashTankCycleConfig
 from hthp.cycles.economizer_cycle import EconomizerCycle, EconomizerCycleConfig
 from hthp.cycles.simple_cycle import SimpleVaporCompressionCycle, SimpleCycleConfig
+from hthp.cycles.ejector_cycle import EjectorCycle, EjectorCycleConfig
 from hthp.heat_sources.fixed_temperature import FixedTemperatureHeatSource
 
 
@@ -30,6 +31,10 @@ class ComponentParams(ref.Params):
     use_subcooler: bool = True  # Same high-stage water subcooler as the reference.
     economizer_effectiveness: float = 0.90
     economizer_minimum_approach_K: float = 5.0
+    ejector_nozzle_efficiency: float = 0.50
+    ejector_mixing_efficiency: float = 0.50
+    ejector_diffuser_efficiency: float = 0.50
+    ejector_ihx_minimum_approach_K: float = 5.0
     optimize_injection: bool = True
     injection_fraction_low: float = 0.5
     injection_fraction_high: float = 0.5
@@ -49,6 +54,9 @@ ARCHITECTURES = (
     ("Low-stage economizer", "economizer", "simple"),
     ("High-stage economizer", "simple", "economizer"),
     ("Economizers in both stages", "economizer", "economizer"),
+    ("High-stage ejector + IHX", "simple", "ejector"),
+    ("Low-stage ejector + IHX", "ejector", "simple"),
+    ("Ejectors + IHXs in both stages", "ejector", "ejector"),
 )
 
 
@@ -65,6 +73,11 @@ def _solve_flash(config):
 @lru_cache(maxsize=2048)
 def _solve_economizer(config):
     return EconomizerCycle(config).solve()
+
+
+@lru_cache(maxsize=2048)
+def _solve_ejector(config):
+    return EjectorCycle(config).solve()
 
 
 def _normalized_stage(p, stage, Tev, Tcd, q_sc):
@@ -86,6 +99,21 @@ def _normalized_stage(p, stage, Tev, Tcd, q_sc):
                     sc=s["3E"], evap_in=s[4], work=result.compressor_shaft_power_kW,
                     Qev=result.evaporator_heat_kW, Pint=None,
                     compressors=[(s[1], s[2], 1.0)])
+    if technology == "ejector":
+        result = _solve_ejector(EjectorCycleConfig(
+            **kwargs, nozzle_efficiency=p.ejector_nozzle_efficiency,
+            mixing_efficiency=p.ejector_mixing_efficiency,
+            diffuser_efficiency=p.ejector_diffuser_efficiency,
+            ihx_minimum_approach_K=p.ejector_ihx_minimum_approach_K))
+        s = result.states
+        return dict(result=result, states=s, mass=result.refrigerant_mass_flow_kg_s,
+                    main_fraction=result.entrainment_ratio, technology="ejector",
+                    suction=s["suction"], discharge=s["discharge"],
+                    condenser=s["condenser_out"], sc=s["subcooler_out"],
+                    evap_in=s["evaporator_in"], evap_out=s["evaporator_out"],
+                    work=result.compressor_shaft_power_kW,
+                    Qev=result.evaporator_heat_kW, Pint=None,
+                    compressors=[(s["suction"], s["discharge"], 1.0)])
     fraction = p.injection_fraction_high if stage == "h" else p.injection_fraction_low
     pev, pcd = ref.psat_bar(fluid, Tev, 1), ref.psat_bar(fluid, Tcd, 0)
     kwargs["intermediate_pressure_bar"] = pev * (pcd/pev)**fraction
@@ -113,6 +141,7 @@ def _to_reference_dict(p, stage, Tev, Tcd, normalized, mass, qsc):
     scale = mass/normalized["mass"]
     suction, discharge = normalized["suction"], normalized["discharge"]
     cond, sc, evap = normalized["condenser"], normalized["sc"], normalized["evap_in"]
+    evap_out = normalized.get("evap_out", suction)
     coeff = (p.a_is_h, p.b_is_h, p.c_is_h) if stage == "h" else (p.a_is_l, p.b_is_l, p.c_is_l)
     compressors = []
     for sin, sout, fraction in normalized["compressors"]:
@@ -137,7 +166,10 @@ def _to_reference_dict(p, stage, Tev, Tcd, normalized, mass, qsc):
                   H1=suction.enthalpy_kJ_kg*1000, H2=discharge.enthalpy_kJ_kg*1000,
                   H3=cond.enthalpy_kJ_kg*1000,
                   H4=(sc if stage == "h" else evap).enthalpy_kJ_kg*1000,
-                  H5=evap.enthalpy_kJ_kg*1000, P_ev=suction.pressure_bar,
+                  H5=evap.enthalpy_kJ_kg*1000, P_ev=evap.pressure_bar,
+                  H_evap_out=evap_out.enthalpy_kJ_kg*1000,
+                  T_evap_out=evap_out.temperature_C,
+                  P_suction=suction.pressure_bar,
                   P_cd=cond.pressure_bar, P_int=normalized["Pint"],
                   RP=cond.pressure_Pa/suction.pressure_Pa, eta_is=compressors[-1]["eta_is"],
                   eta_v=compressors[0]["eta_v"], m_dot=mass,
@@ -148,7 +180,24 @@ def _to_reference_dict(p, stage, Tev, Tcd, normalized, mass, qsc):
                   W=W, Q_cond=Qcond, Q_sc=Qsc, Q_ev=Qev, Q_total=Qcond+Qsc,
                   COP=(Qcond+Qsc)/W, residual=Qcond+Qsc-W-Qev,
                   compressors=compressors, component_states=normalized["states"],
-                  injection_fraction=1-normalized["main_fraction"])
+                  injection_fraction=(0.0 if normalized.get("technology") == "ejector"
+                                      else 1-normalized["main_fraction"]))
+    if normalized.get("technology") == "ejector":
+        ejector = normalized["result"]
+        result.update(
+            P_separator=ejector.separator_pressure_bar,
+            ejector_entrainment_ratio=ejector.entrainment_ratio,
+            ejector_pressure_lift_ratio=ejector.ejector.pressure_lift_ratio,
+            separator_vapor_quality=ejector.separator_vapor_quality,
+            ejector_closure_residual=ejector.closure_residual,
+            separator_mass_residual=ejector.separator_mass_balance_error_kg_s*scale,
+            Q_ihx=ejector.ihx_heat_kW*scale*1000,
+            ihx_balance_residual=ejector.ihx_balance_error_kW*scale*1000,
+            ihx_minimum_approach_K=ejector.ihx_minimum_approach_K,
+            compressor_superheat_K=suction.temperature_C
+                - normalized["states"]["separator_vapour"].temperature_C,
+            evaporator_superheat_K=p.SUP_h if stage == "h" else p.SUP_l,
+        )
     return result
 
 
@@ -192,7 +241,10 @@ The pressure search is distinct from the unchanged reference Tcond optimizer.
 """
     fields = [name for name, technology in (
         ("injection_fraction_low", p.low_technology),
-        ("injection_fraction_high", p.high_technology)) if technology != "simple"]
+        ("injection_fraction_high", p.high_technology))
+        if technology in ("flash_tank", "economizer")]
+    if not fields:
+        return ref.ciclo_cascata(replace(p, _evaluating_injection=True), T_cd_l)
     cache = {}
     best = None
 
