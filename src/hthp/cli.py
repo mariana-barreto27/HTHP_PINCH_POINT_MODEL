@@ -14,7 +14,9 @@ import numpy as np
 
 from hthp import model
 from hthp.analyses import evaluate, ph_analysis, plot_curves, record, save_rows
-from hthp.configurations import ARCHITECTURES, ComponentParams
+from hthp.configurations import ARCHITECTURES, BASE_ARCHITECTURES, ComponentParams
+from hthp.comparisons import (comparison_views, view_cases, relative_cop_groups,
+                              comparison_metadata, load_comparison_data, solver_signature)
 from hthp.plots.style import MM, add_minor_grid, save_figure
 from hthp.plots.heatmap import heatmap
 
@@ -42,6 +44,10 @@ def build_parser():
                         help="componente aplicado ao(s) estágio(s) escolhido(s)")
     parser.add_argument("--estagio", choices=("baixa", "alta", "ambos"), default="ambos",
                         help="estágio que recebe flash tank, economizador ou ejetor com IHX")
+    parser.add_argument("--baixa", choices=tuple(TECHNOLOGY),
+                        help="componente da baixa; use com --alta para uma combinação mista")
+    parser.add_argument("--alta", choices=tuple(TECHNOLOGY),
+                        help="componente da alta; o estágio não informado fica simples")
     parser.add_argument("--analise", choices=("ponto", "curva", "ph", "mapa", "fonte", "comparacao", "all"),
                         default="ponto", help="resultado que será calculado")
     subcooler = parser.add_mutually_exclusive_group()
@@ -57,18 +63,31 @@ def build_parser():
                         help="tolerância em °C da busca scipy.optimize pelo ponto ótimo")
     parser.add_argument("--temperatura-baixa", type=float, default=45.0,
                         help="condensação do estágio de baixa fixa nas análises de fonte/mapa")
+    parser.add_argument("--grupo", choices=("todos", "economizador", "flash", "ejetor", "mistas"),
+                        default="todos", help="grupo de configurações na análise comparacao")
+    parser.add_argument("--replotar", action="store_true",
+                        help="refaz a comparação com CSVs compatíveis, sem recalcular ciclos")
+    parser.add_argument("--comparar-subcooler", action="store_true",
+                        help="compara componentes com/sem subcooler e a cascata sem componentes adicionais")
     return parser
 
 
 def selected_case(args):
+    explicit_stages = args.baixa is not None or args.alta is not None
+    if explicit_stages and (args.componente != "simples" or args.estagio != "ambos"):
+        raise ValueError("Use --baixa/--alta OU --componente/--estagio, sem misturar as opções.")
     if args.ciclo == "alta":
-        if args.componente != "simples":
+        if explicit_stages or args.componente != "simples":
             raise ValueError("O ciclo de alta isolado está disponível, por enquanto, sem injeção.")
         if args.analise in ("curva", "mapa", "comparacao"):
             raise ValueError("Curva, mapa e comparação de temperaturas estão definidos para a cascata.")
-    tech = TECHNOLOGY[args.componente]
-    low = tech if args.estagio in ("baixa", "ambos") else "simple"
-    high = tech if args.estagio in ("alta", "ambos") else "simple"
+    if explicit_stages:
+        low = TECHNOLOGY[args.baixa or "simples"]
+        high = TECHNOLOGY[args.alta or "simples"]
+    else:
+        tech = TECHNOLOGY[args.componente]
+        low = tech if args.estagio in ("baixa", "ambos") else "simple"
+        high = tech if args.estagio in ("alta", "ambos") else "simple"
     name = next((n for n, l, h in ARCHITECTURES if (l, h) == (low, high)), None)
     if name is None:
         raise ValueError("Combinação de componentes inválida.")
@@ -87,7 +106,7 @@ def selected_case(args):
 
 
 def case_folder(name, args):
-    slug = name.lower().replace(" ", "_")
+    slug = name.lower().replace(" / ", "__").replace(" ", "_")
     cycle = "cascata" if args.ciclo == "cascata" else "estagio_alto"
     return ROOT / "results" / cycle / slug / args.analise
 
@@ -210,57 +229,130 @@ def run_source(label, p, args, output):
 
 
 def run_comparison(args, output):
+    if args.comparar_subcooler:
+        from hthp.component_comparison import run_component_comparison
+        return run_component_comparison(args, Path(output) / "adicao_componentes")
+    output = Path(output)
     p = ComponentParams(Q_target=args.carga * 1000, T_source_in=args.fonte,
                         T_cd_l_step=args.tolerancia, use_subcooler=args.subcooler)
+    views = comparison_views(args.grupo)
+    cases = view_cases(views)
+    signature = solver_signature()
+    metadata = comparison_metadata(p, args.pontos, signature, cases)
+    if args.replotar:
+        temperatures = np.linspace(p.T_cd_l_min, model.T_cd_l_max(p), args.pontos)
+        errors = []
+        for source in dict.fromkeys((output / "todas_combinacoes", output / views[0].folder)):
+            try:
+                summaries, groups = load_comparison_data(source, metadata, cases, temperatures)
+                print(f"Reutilizando resultados compatíveis de: {source}", flush=True)
+                break
+            except (OSError, ValueError, KeyError) as error:
+                errors.append(str(error))
+        else:
+            raise ValueError("Não há resultados completos e compatíveis para replotar. "
+                             "Execute primeiro sem --replotar. " + errors[-1])
+    else:
+        summaries = _calculate_comparison_optima(args, p, cases)
+        groups = _calculate_architecture_curves(args, p, cases)
+    summaries.sort(key=lambda row: (row["status"] != "valid", -float(row.get("COP") or 0)))
+    for view in views:
+        labels = {case[0] for case in view.cases}
+        subset = [(label, rows) for label, rows in groups if label in labels]
+        summary = [row for row in summaries if row["configuration"] in labels]
+        destination = output / view.folder
+        destination.mkdir(parents=True, exist_ok=True)
+        conditions = comparison_metadata(p, args.pontos, signature, view.cases)
+        conditions.update(reference=view.reference, gain_comparison="same low-stage condensation temperature")
+        (destination / "conditions.json").write_text(
+            json.dumps(conditions, indent=2, ensure_ascii=False), encoding="utf-8")
+        save_rows(summary, destination / "optima.csv")
+        save_rows([row for _, rows in subset for row in rows],
+                  destination / "architecture_temperature_sweeps.csv")
+        if view.all_metrics:
+            _plot_architecture_curves(args, p, destination, groups=subset, cop_title=view.title)
+        else:
+            plot_curves(subset, "low_condensation_C", "COP",
+                        "Low-stage condensation temperature [°C]", "Overall COP [-]",
+                        view.title, destination / "cop_vs_low_stage_condensation", p)
+        gains = relative_cop_groups(subset, view.reference)
+        save_rows([row for _, rows in gains for row in rows], destination / "cop_gains.csv")
+        plot_curves(gains, "low_condensation_C", "COP_gain_percent",
+                    "Low-stage condensation temperature [°C]", "COP change [%]",
+                    view.title.replace("Cascade COP", "Cascade COP change"),
+                    destination / "cop_gain_vs_low_stage_condensation", p,
+                    legend_title=f"Reference: {view.reference}\nAt the same intermediate temperature")
+        print(f"Gráficos e tabela: {destination}", flush=True)
+    if args.grupo == "todos":
+        # Preserve the previous ten-case plots and their familiar filenames.
+        labels = {case[0] for case in BASE_ARCHITECTURES}
+        legacy = [(label, rows) for label, rows in groups if label in labels]
+        save_rows([row for row in summaries if row["configuration"] in labels], output / "optima.csv")
+        (output / "conditions.json").write_text(
+            json.dumps(comparison_metadata(p, args.pontos, signature, BASE_ARCHITECTURES),
+                       indent=2, ensure_ascii=False), encoding="utf-8")
+        _plot_architecture_curves(args, p, output / "temperature_curves", groups=legacy)
+    valid = [row for row in summaries if row["status"] == "valid"]
+    if not valid:
+        raise ValueError("Nenhuma configuração com ponto ótimo viável neste grupo.")
+    best = valid[0]
+    print(f"Maior COP encontrado: {best['configuration']} | {float(best['COP']):.4f} | "
+          f"condensação da baixa: {float(best['low_condensation_C']):.2f} °C")
+    print(f"Resumo: {output / views[0].folder}")
+
+
+def _calculate_comparison_optima(args, p, cases):
     summaries = []
-    for label, low, high in ARCHITECTURES:
+    for index, (label, low, high) in enumerate(cases, 1):
+        print(f"Ótimo {index}/{len(cases)}: {label}", flush=True)
         case = replace(p, low_technology=low, high_technology=high,
                        optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)))
         cached = getattr(args, "_optima_cache", {}).get(label)
         if cached is None:
-            cycle, _ = model.otimizar_cascata(case)
-            cached = record(label, case, cycle)
+            try:
+                cycle, _ = model.otimizar_cascata(case)
+                cached = record(label, case, cycle)
+            except ValueError as error:
+                cached = dict(configuration=label, status="invalid", reason=str(error))
         summaries.append(cached)
-        print(f"{label}: COP ótimo {cached['COP']:.4f}")
-    output.mkdir(parents=True, exist_ok=True)
-    (output / "conditions.json").write_text(
-        json.dumps({"cycle": "cascata", "analysis": "comparacao",
-                    "parameters": asdict(p)}, indent=2, ensure_ascii=False), encoding="utf-8")
-    summaries.sort(key=lambda row: row["COP"], reverse=True)
-    save_rows(summaries, output / "optima.csv")
-    _plot_architecture_curves(args, p, output / "temperature_curves")
-    best = summaries[0]
-    print(f"Maior COP: {best['configuration']} | {best['COP']:.4f} | "
-          f"condensação da baixa: {best['low_condensation_C']:.2f} °C")
-    print(f"Resumo: {output}")
+        if cached["status"] == "valid":
+            print(f"  COP ótimo {float(cached['COP']):.4f}", flush=True)
+        else:
+            print(f"  Sem ótimo viável: {cached['reason']}", flush=True)
+    return summaries
 
 
-def _plot_architecture_curves(args, p, output):
+def _calculate_architecture_curves(args, p, cases):
+    temperatures = np.linspace(p.T_cd_l_min, model.T_cd_l_max(p), args.pontos)
+    cache = getattr(args, "_curve_cache", {})
+    groups = []
+    for index, (label, low, high) in enumerate(cases, 1):
+        print(f"Curva {index}/{len(cases)}: {label}", flush=True)
+        if label in cache:
+            rows = cache[label]
+        else:
+            case = replace(p, low_technology=low, high_technology=high,
+                           optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)))
+            rows = [evaluate(label, case, float(t)) for t in temperatures]
+        groups.append((label, rows))
+    return groups
+
+
+def _plot_architecture_curves(args, p, output, groups=None,
+                              cop_title="Cascade COP — architecture comparison"):
     """Make like-for-like curves for every cascade architecture.
 
     The swept variable and x axis are the low-stage condensing temperature,
     matching the comparison figure requested for the cascade analyses.
     """
     output.mkdir(parents=True, exist_ok=True)
-    temperatures = np.linspace(p.T_cd_l_min, model.T_cd_l_max(p), args.pontos)
-    groups = []
-    combined_rows = []
-    cache = getattr(args, "_curve_cache", {})
-    for label, low, high in ARCHITECTURES:
-        if label in cache:
-            rows = cache[label]
-            groups.append((label, rows))
-            combined_rows.extend(rows)
-            continue
-        case = replace(p, low_technology=low, high_technology=high,
-                       optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)))
-        rows = [evaluate(label, case, float(t)) for t in temperatures]
-        groups.append((label, rows))
-        combined_rows.extend(rows)
+    if groups is None:
+        groups = _calculate_architecture_curves(args, p, BASE_ARCHITECTURES)
+    combined_rows = [row for _, rows in groups for row in rows]
     save_rows(combined_rows, output / "architecture_temperature_sweeps.csv")
     x_label = "Low-stage condensation temperature [°C]"
     plot_curves(groups, "low_condensation_C", "COP", x_label, "Overall COP [-]",
-                "Cascade COP — architecture comparison",
+                cop_title,
                 output / "cop_vs_low_stage_condensation", p)
     plot_curves(groups, "low_condensation_C", "W_shaft_kW", x_label,
                 "Compressor shaft power [kW]",
@@ -333,6 +425,9 @@ def run_all_architectures(args):
 
     args.analise = "comparacao"
     run_comparison(args, ROOT / "results" / "cascata" / "comparacao")
+    # Add both subcooler versions, but preserve the user's original option.
+    from hthp.component_comparison import run_component_comparison
+    run_component_comparison(args, ROOT / "results" / "cascata" / "comparacao" / "adicao_componentes")
     args.analise = "all"
 
 
@@ -343,6 +438,14 @@ def main(argv=None):
         args.analise = "all"
     if args.carga <= 0 or args.pontos < 3 or args.tolerancia <= 0:
         parser.error("carga e tolerância devem ser positivas; use pelo menos 3 pontos.")
+    if (args.grupo != "todos" or args.replotar or args.comparar_subcooler) and args.analise != "comparacao":
+        parser.error("--grupo, --replotar e --comparar-subcooler são opções da análise comparacao.")
+    if args.comparar_subcooler and not args.subcooler:
+        parser.error("--comparar-subcooler já inclui as duas versões; retire --sem-subcooler.")
+    if args.analise == "comparacao" and args.ciclo != "cascata":
+        parser.error("A comparação está definida para o ciclo cascata.")
+    if args.analise == "all" and (args.baixa is not None or args.alta is not None):
+        parser.error("'all' roda todas as combinações; retire --baixa e --alta.")
     try:
         if args.analise == "all":
             if args.ciclo != "cascata":

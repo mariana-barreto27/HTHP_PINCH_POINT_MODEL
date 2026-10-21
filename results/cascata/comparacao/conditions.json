@@ -1,5 +1,4 @@
 {
-  "cycle": "cascata",
   "analysis": "comparacao",
   "parameters": {
     "F_source": "Air",
@@ -66,5 +65,59 @@
     "injection_grid_points": 7,
     "injection_coordinate_passes": 3,
     "_evaluating_injection": false
-  }
+  },
+  "points": 17,
+  "solver_signature": "be2776a05b70a250befd70b71ee4af54956970e70354a1556173d4734fd8430a",
+  "cases": [
+    {
+      "configuration": "Conventional cascade",
+      "low": "simple",
+      "high": "simple"
+    },
+    {
+      "configuration": "Low-stage flash tank",
+      "low": "flash_tank",
+      "high": "simple"
+    },
+    {
+      "configuration": "High-stage flash tank",
+      "low": "simple",
+      "high": "flash_tank"
+    },
+    {
+      "configuration": "Flash tanks in both stages",
+      "low": "flash_tank",
+      "high": "flash_tank"
+    },
+    {
+      "configuration": "Low-stage economizer",
+      "low": "economizer",
+      "high": "simple"
+    },
+    {
+      "configuration": "High-stage economizer",
+      "low": "simple",
+      "high": "economizer"
+    },
+    {
+      "configuration": "Economizers in both stages",
+      "low": "economizer",
+      "high": "economizer"
+    },
+    {
+      "configuration": "High-stage ejector + IHX",
+      "low": "simple",
+      "high": "ejector"
+    },
+    {
+      "configuration": "Low-stage ejector + IHX",
+      "low": "ejector",
+      "high": "simple"
+    },
+    {
+      "configuration": "Ejectors + IHXs in both stages",
+      "low": "ejector",
+      "high": "ejector"
+    }
+  ]
 }

@@ -50,20 +50,20 @@ and plots against the corresponding high-stage evaporation temperature.
 `ph` optimizes first and plots the selected cascade at that point. `mapa` shows
 COP versus source inlet and low-stage condensation temperatures. `fonte` shows
 COP versus source temperature at the requested fixed low-stage condensation.
-`comparacao` compares all ten supported architectures, writes an optimum
+`comparacao` compares all sixteen supported configurations, writes an optimum
 summary table, and generates shared COP, compressor-power, and discharge-
 temperature curves across the low-stage condensation-temperature sweep. The
 comparison plots use curves rather than architecture bar charts.
 
-`python run.py all` performs the selected-model analyses for all ten
-architectures and then the shared comparisons. It does not reproduce analyses
-that depend on components removed from this model (such as IHX), or old
-single-stage cases with different refrigerants and boundary conditions. The
+`python run.py all` performs the selected-model analyses for all sixteen
+configurations and then the shared comparisons. It does not reproduce old
+single-stage cases with different refrigerants and boundary conditions. IHXs
+are present only as part of the explicitly selected ejector + IHX cycle. The
 new-model comparisons consistently use the same load, source condition,
 subcooler setting, refrigerants, and pinch assumptions so the architectures
 can be compared fairly.
 
-To find which of the ten configurations has the largest COP, run
+To find which of the sixteen configurations has the largest COP, run
 `--analise comparacao`. That explicitly optimizes each configuration and
 saves a short table and COP chart. Then select the configuration you want and
 run `--analise ph` to draw its cycle at its own optimum. `--analise curva`
@@ -76,7 +76,130 @@ optima within the model bounds, not proof of a global optimum. Adjust search
 resolution and operating conditions with `--tolerancia`, `--pontos`, `--carga`,
 `--fonte`, and `--temperatura-baixa`.
 
+## Mixed components and comparison views
+
+Each cascade circuit can independently use a conventional cycle, flash tank,
+economizer, or ejector + IHX. The 4 x 4 combinations include the ten previous
+cases and six mixed cases. This changes connections between existing stage
+models, not the refrigerants, boundary conditions or component equations.
+Parallel compressors, expanders and double injection are NOT added by this update.
+
+Select the low and high components explicitly:
+
+```bash
+python run.py --baixa flash --alta economizador --analise curva
+python run.py --baixa economizador --alta ejetor --analise ph
+```
+
+Use `--baixa`/`--alta` OR the previous `--componente`/`--estagio` syntax, not both.
+An omitted stage in the explicit syntax uses the conventional cycle. All five
+individual analyses, including the combined optimum P-h diagram, work for the
+mixed cases too. Ejector separator pressure still follows its balance closure;
+only flash-tank/economizer intermediate pressures use the injection optimizer.
+
+Generate all comparison views with one calculation campaign:
+
+```bash
+python run.py --analise comparacao
+```
+
+Or calculate just the cases in one family:
+
+```bash
+python run.py --analise comparacao --grupo economizador
+python run.py --analise comparacao --grupo flash
+python run.py --analise comparacao --grupo ejetor
+python run.py --analise comparacao --grupo mistas
+```
+
+Each component-family figure includes the seven configurations containing that
+component plus the conventional cascade as a clearly identified reference.
+Different views reuse the same calculated points; they never run new optimizations
+just to change a plot grouping. Colors and line styles remain consistent across views.
+
+Comparison output is organized under `results/cascata/comparacao/`:
+
+- `temperature_curves/` and `optima.csv`: the original ten-case comparison is retained.
+- `todas_combinacoes/`: all sixteen cases, optima, COP, power, discharge and efficiency curves.
+- `por_componente/economizador/`, `flash_tank/`, `ejetor_ihx/`: component-family COP curves.
+- `combinacoes_mistas/`: the six mixed cases plus the conventional reference.
+- `componente_baixa_fixo/`: four views holding the LOW-stage component fixed.
+- `componente_alta_fixo/`: four views holding the HIGH-stage component fixed.
+
+"Fixed component" means fixed component TYPE, not a fixed temperature: these
+figures still sweep the low-stage condensation temperature. Each view includes
+`optima.csv`, the temperature-sweep CSV, PNG/PDF figures and `conditions.json`.
+
+Every new view also includes `cop_gain_vs_low_stage_condensation.png/.pdf` and
+`cop_gains.csv`. The gain is `100 * (COP_case / COP_reference - 1)` at the SAME
+intermediate temperature. It does not compare each case at its separate optimum.
+Family/mixed figures use the conventional reference; fixed-component figures use
+the matching case with a conventional cycle in the other circuit. A gap means
+the case OR its reference is unavailable there; no gain is interpolated across it.
+
+After calculating, regenerate figures without solving the cycles again:
+
+```bash
+python run.py --analise comparacao --grupo economizador --replotar
+python run.py --analise comparacao --replotar
+```
+
+`--replotar` only accepts complete saved data with matching parameters, grid,
+thermodynamic-code signature and property-library versions. Changed conditions
+or equations require a fresh calculation without that flag. A family-only run
+does not overwrite the general or original ten-case comparison. `all` continues
+to run ALL available analyses; it is not a fast preview mode.
+
 ## Output
+
+### Adding components: always include the bare cascade
+
+To distinguish the benefit of a component from the benefit of the water
+subcooler, compare BOTH actual model versions in the SAME figure:
+
+```bash
+python run.py --analise comparacao --comparar-subcooler
+python run.py --analise comparacao --comparar-subcooler --grupo economizador
+```
+
+The full figure has 32 cases (16 stage combinations x 2 subcooler settings).
+Each family includes the conventional cascade without a subcooler, the
+conventional cascade with a subcooler, and each family configuration with and
+without a subcooler. For example: economizer alone; economizer + subcooler;
+economizer in one stage + flash tank or ejector + IHX in the other, again with
+and without a subcooler. These are actual recalculations, NOT renamed curves.
+
+Same color means the same low/high components. Dashed lines have no water
+subcooler; solid lines include the HIGH-stage water subcooler. No low-stage
+water subcooler is introduced. The ejector's internal IHX remains installed;
+the economizer's internal subcooling is also retained when removing the water
+subcooler. "Bare cascade" means conventional cycles in both stages, no
+injection/ejector/IHX and no additional water subcooler. The small specified
+condenser outlet subcooling remains a boundary assumption, not an added device.
+
+All cases retain the SAME total 170 kW duty (or the requested `--carga`),
+refrigerants, water/source boundary conditions, compressor law and pinches.
+With the water subcooler enabled, its heat is included in that duty, as in the
+existing model; the heat split between that water branch and the main load can
+therefore change. This comparison is not a claim of 170 kW supplied entirely
+at 120 °C. Intermediate temperatures are swept on the same grid and flash/
+economizer intermediate pressures are optimized in each version. Optimum
+temperatures are separately optimized, not copied from the subcooler case.
+
+New figures and tables go under `results/cascata/comparacao/adicao_componentes/`,
+with `todas_combinacoes/`, `por_componente/` and `combinacoes_mistas/` views.
+Every gain figure uses the conventional cascade WITHOUT a subcooler as reference,
+at the same intermediate temperature. Existing comparison folders are untouched.
+Compatible versioned data are reused automatically; missing/incompatible data
+are recalculated. To only regenerate the figures (fail if recalculation is needed):
+
+```bash
+python run.py --analise comparacao --comparar-subcooler --grupo economizador --replotar
+```
+
+Use the same load, source, point count and tolerance as the saved campaign.
+Do not combine `--comparar-subcooler` with `--sem-subcooler`: the former already
+includes both versions. `python run.py all` also generates these addition views.
 
 Only the selected analysis is generated. Files go under `results/`, in folders
 named for the cycle, configuration, and analysis. Each run writes a
@@ -89,6 +212,8 @@ P–h runs also save the state table as CSV.
 - `src/hthp/model.py`: reference thermodynamic model and cascade optimization.
 - `src/hthp/configurations.py`: flash-tank and economizer implementations.
 - `src/hthp/analyses.py`: result records, plots, and P–h diagrams.
+- `src/hthp/comparisons.py`: grouping, reference gains and saved-data validation.
+- `src/hthp/component_comparison.py`: paired component comparisons with/without the water subcooler.
 - `src/hthp/components/`, `cycles/`, `heat_sources/`, `thermo/`: reusable
   component and property calculations used by the selected model.
 
@@ -102,7 +227,8 @@ high-stage water subcooler. These values can be changed in `Params` in
 
 The original seven configurations are retained. Three additional configurations
 place an ejector with its own liquid/suction IHX in the high stage, low stage,
-or both stages. The IHX is included ONLY in the stage selected for the ejector;
+or both stages. Six mixed cases additionally combine different component types
+across the circuits. The IHX is included ONLY in the stage selected for the ejector;
 it is not restored in the conventional, flash-tank or economizer cases.
 
 Start with the high-stage ejector and the existing high-stage water subcooler:

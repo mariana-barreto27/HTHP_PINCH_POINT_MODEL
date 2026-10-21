@@ -17,7 +17,7 @@ def save_rows(rows, path):
     path.parent.mkdir(parents=True, exist_ok=True)
     fields = list(dict.fromkeys(key for row in rows for key in row))
     with path.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=fields)
+        writer = csv.DictWriter(stream, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
@@ -78,15 +78,35 @@ def record(label, p, cycle):
     return row
 
 
-def plot_curves(groups, xkey, ykey, xlabel, ylabel, title, path, p):
-    fig, ax = plt.subplots()
+def plot_curves(groups, xkey, ykey, xlabel, ylabel, title, path, p, legend_title=None,
+                subcooler_comparison=False):
+    from hthp.comparisons import compact_label
+    from hthp.configurations import ARCHITECTURES
+
+    style_indices = {case[0]: index for index, case in enumerate(ARCHITECTURES)}
+    if subcooler_comparison and len(groups) > 20:
+        # Thirty-two labels need real space; constrained layout otherwise
+        # collapses the axes and lets the legend cover the x-axis label.
+        fig, ax = plt.subplots(figsize=(190/25.4, 230/25.4), layout="none")
+        fig.subplots_adjust(left=0.13, right=0.98, top=0.89, bottom=0.46)
+    else:
+        fig, ax = plt.subplots()
     for index, (label, rows) in enumerate(groups):
+        base_label = rows[0].get("base_configuration", label) if rows else label
+        index = style_indices.get(base_label, index)
+        line_style = DASHES[index % len(DASHES)]
+        display_label = compact_label(label)
+        if subcooler_comparison and rows:
+            with_subcooler = rows[0]["with_high_stage_subcooler"]
+            line_style = "-" if with_subcooler else "--"
+            display_label = compact_label(base_label) + (
+                " + subcooler" if with_subcooler else " (no subcooler)")
         points = [row for row in rows if xkey in row]
         if points:
             ax.plot([row[xkey] for row in points],
                     [row.get(ykey, np.nan) if row["status"] == "valid" else np.nan
                      for row in points], color=COLORS[index % len(COLORS)],
-                    linestyle=DASHES[index % len(DASHES)], marker="none", label=label)
+                    linestyle=line_style, marker="none", label=display_label)
     if p.MODO_AGUA_COND == "SATURADO":
         water_condition = f"saturated water at {p.T_sat_w_cond:g} °C"
     else:
@@ -94,14 +114,18 @@ def plot_curves(groups, xkey, ykey, xlabel, ylabel, title, path, p):
             f"water {p.T_w_cond_in:g} °C at {p.P_w_cond_liq:g} bar"
         )
     subcooler_condition = "high-stage subcooler" if p.use_subcooler else "no subcooler"
+    if subcooler_comparison:
+        subcooler_condition = "with / without high-stage subcooler"
     conditions = f"{p.Q_target / 1000:g} kW | {water_condition} | {subcooler_condition}"
     ax.set(title=f"{title}\n{conditions}", xlabel=xlabel, ylabel=ylabel)
     add_minor_grid(ax)
-    if len(groups) > 7:
+    if len(groups) > 7 or legend_title:
         ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.23),
-                  ncols=2, fontsize=8)
+                  ncols=2, fontsize=7 if len(groups) > 10 else 8,
+                  title=legend_title, title_fontsize=8)
     else:
-        ax.legend(loc="best", ncols=2, fontsize=9)
+        ax.legend(loc="best", ncols=1 if legend_title else 2, fontsize=8 if legend_title else 9,
+                  title=legend_title, title_fontsize=8)
     save_figure(fig, path)
     plt.close(fig)
 

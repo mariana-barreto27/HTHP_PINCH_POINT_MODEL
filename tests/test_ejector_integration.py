@@ -55,7 +55,7 @@ class EjectorIntegrationTests(unittest.TestCase):
         self.assertAlmostEqual(c["Q_total"], 170000)
 
     def test_command_line_and_architecture_registry(self):
-        self.assertEqual(len(ARCHITECTURES), 10)
+        self.assertEqual(len(ARCHITECTURES), 16)
         parser = build_parser()
         for stage in ("alta", "baixa", "ambos"):
             args = parser.parse_args(["--componente", "ejetor", "--estagio", stage])
@@ -65,13 +65,16 @@ class EjectorIntegrationTests(unittest.TestCase):
         _, p = selected_case(parser.parse_args([]))
         self.assertEqual((p.low_technology, p.high_technology), ("simple", "simple"))
 
-    def test_run_all_dispatches_every_analysis_for_all_ten_cases(self):
+    def test_run_all_dispatches_every_analysis_for_all_cases(self):
         args = build_parser().parse_args(["all"])
         with patch("hthp.cli.run_selected_analysis") as selected, \
-             patch("hthp.cli.run_comparison") as comparison, patch("builtins.print"):
+             patch("hthp.cli.run_comparison") as comparison, \
+             patch("hthp.component_comparison.run_component_comparison") as additions, \
+             patch("builtins.print"):
             run_all_architectures(args)
         self.assertEqual(selected.call_count, 5*len(ARCHITECTURES))
         comparison.assert_called_once()
+        additions.assert_called_once()
         labels = {call.args[0] for call in selected.call_args_list}
         self.assertEqual(labels, {case[0] for case in ARCHITECTURES})
 

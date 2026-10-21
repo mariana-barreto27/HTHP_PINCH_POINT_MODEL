@@ -46,7 +46,7 @@ class ComponentParams(ref.Params):
     _evaluating_injection: bool = False
 
 
-ARCHITECTURES = (
+BASE_ARCHITECTURES = (
     ("Conventional cascade", "simple", "simple"),
     ("Low-stage flash tank", "flash_tank", "simple"),
     ("High-stage flash tank", "simple", "flash_tank"),
@@ -58,6 +58,18 @@ ARCHITECTURES = (
     ("Low-stage ejector + IHX", "ejector", "simple"),
     ("Ejectors + IHXs in both stages", "ejector", "ejector"),
 )
+
+MIXED_ARCHITECTURES = (
+    ("Low-stage flash tank / high-stage economizer", "flash_tank", "economizer"),
+    ("Low-stage economizer / high-stage flash tank", "economizer", "flash_tank"),
+    ("Low-stage flash tank / high-stage ejector + IHX", "flash_tank", "ejector"),
+    ("Low-stage ejector + IHX / high-stage flash tank", "ejector", "flash_tank"),
+    ("Low-stage economizer / high-stage ejector + IHX", "economizer", "ejector"),
+    ("Low-stage ejector + IHX / high-stage economizer", "ejector", "economizer"),
+)
+
+# Keep the ten original names and plotting indices unchanged.
+ARCHITECTURES = BASE_ARCHITECTURES + MIXED_ARCHITECTURES
 
 
 @lru_cache(maxsize=2048)
