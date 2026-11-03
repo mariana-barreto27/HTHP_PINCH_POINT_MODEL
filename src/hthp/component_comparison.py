@@ -94,7 +94,9 @@ def run_component_comparison(args, output):
                   if not view.folder.startswith(("componente_baixa_fixo/", "componente_alta_fixo/")))
     cases = view_cases(views)
     p = ComponentParams(Q_target=args.carga*1000, T_source_in=args.fonte,
-                        T_cd_l_step=args.tolerancia)
+                        T_cd_l_step=args.tolerancia,
+                        expander_isentropic_efficiency=args.eficiencia_expansor,
+                        expander_recovery_efficiency=args.recuperacao_expansor)
     signature = solver_signature()
     data = {enabled: _variant_data(args, replace(p, use_subcooler=enabled), cases,
                                    views, output, signature) for enabled in (False, True)}

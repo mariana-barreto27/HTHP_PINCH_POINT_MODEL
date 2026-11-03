@@ -55,7 +55,7 @@ class EjectorIntegrationTests(unittest.TestCase):
         self.assertAlmostEqual(c["Q_total"], 170000)
 
     def test_command_line_and_architecture_registry(self):
-        self.assertEqual(len(ARCHITECTURES), 16)
+        self.assertEqual(len(ARCHITECTURES), 19)
         parser = build_parser()
         for stage in ("alta", "baixa", "ambos"):
             args = parser.parse_args(["--componente", "ejetor", "--estagio", stage])

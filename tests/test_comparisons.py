@@ -15,18 +15,25 @@ from hthp.cli import build_parser, selected_case, run_comparison, case_folder
 from hthp.comparisons import (comparison_views, view_cases, relative_cop_groups, compact_label,
                               comparison_metadata, load_comparison_data, solver_signature)
 from hthp.configurations import (ARCHITECTURES, BASE_ARCHITECTURES,
-                                 MIXED_ARCHITECTURES, ComponentParams)
+                                 MIXED_ARCHITECTURES, EXPANDER_ARCHITECTURES,
+                                 ComponentParams)
 from hthp.plots.style import COLORS, DASHES, MARKERS
 
 
 class ComparisonTests(unittest.TestCase):
-    def test_registry_is_the_full_cartesian_product_without_renaming_old_cases(self):
+    def test_registry_preserves_old_product_and_appends_three_expander_placements(self):
         technologies = ("simple", "flash_tank", "economizer", "ejector")
-        self.assertEqual({case[1:] for case in ARCHITECTURES}, set(itertools.product(technologies, repeat=2)))
+        legacy = BASE_ARCHITECTURES + MIXED_ARCHITECTURES
+        self.assertEqual(ARCHITECTURES[:16], legacy)
+        self.assertEqual({case[1:] for case in legacy}, set(itertools.product(technologies, repeat=2)))
         self.assertEqual(ARCHITECTURES[:10], BASE_ARCHITECTURES)
         self.assertEqual(len(MIXED_ARCHITECTURES), 6)
-        self.assertEqual(len({case[0] for case in ARCHITECTURES}), 16)
-        self.assertEqual((len(COLORS), len(DASHES), len(MARKERS)), (16, 16, 16))
+        self.assertEqual(ARCHITECTURES[16:], EXPANDER_ARCHITECTURES)
+        self.assertEqual({case[1:] for case in EXPANDER_ARCHITECTURES},
+                         {("simple", "expander"), ("expander", "simple"),
+                          ("expander", "expander")})
+        self.assertEqual(len({case[0] for case in ARCHITECTURES}), 19)
+        self.assertEqual((len(COLORS), len(DASHES), len(MARKERS)), (19, 19, 19))
 
     def test_each_component_view_has_seven_component_cases_and_one_reference(self):
         for choice, technology in (("economizador", "economizer"),
@@ -38,13 +45,17 @@ class ComparisonTests(unittest.TestCase):
 
     def test_fixed_component_views_hold_component_not_temperature(self):
         views = comparison_views()
-        self.assertEqual(len(views), 13)
+        self.assertEqual(len(views), 16)
         for view in views:
             if "componente_baixa_fixo" in view.folder:
-                self.assertEqual(len(view.cases), 4)
+                technology = view.cases[0][1]
+                expected = {"simple": 5, "expander": 2}.get(technology, 4)
+                self.assertEqual(len(view.cases), expected)
                 self.assertEqual(len({case[1] for case in view.cases}), 1)
             if "componente_alta_fixo" in view.folder:
-                self.assertEqual(len(view.cases), 4)
+                technology = view.cases[0][2]
+                expected = {"simple": 5, "expander": 2}.get(technology, 4)
+                self.assertEqual(len(view.cases), expected)
                 self.assertEqual(len({case[2] for case in view.cases}), 1)
             self.assertIn(view.reference, {case[0] for case in view.cases})
         self.assertEqual(view_cases(views), ARCHITECTURES)
@@ -90,7 +101,7 @@ class ComparisonTests(unittest.TestCase):
                                    for t in temperatures]))
         return p, summaries, groups, temperatures
 
-    def test_output_views_and_replot_do_not_recompute_or_replace_legacy_with_sixteen_cases(self):
+    def test_output_views_and_replot_do_not_recompute_or_replace_legacy_cases(self):
         parser = build_parser()
         args = parser.parse_args(["--analise", "comparacao", "--pontos", "3"])
         p, summaries, groups, temperatures = self.fake_data(args)
@@ -105,7 +116,7 @@ class ComparisonTests(unittest.TestCase):
                 self.assertEqual(len(list(csv.DictReader(stream))), 10)
             legacy = (output / "optima.csv").read_bytes()
             with (output / "todas_combinacoes" / "optima.csv").open() as stream:
-                self.assertEqual(len(list(csv.DictReader(stream))), 16)
+                self.assertEqual(len(list(csv.DictReader(stream))), len(ARCHITECTURES))
             for view in comparison_views():
                 self.assertTrue((output / view.folder / "cop_gains.csv").exists())
             args.grupo = "economizador"

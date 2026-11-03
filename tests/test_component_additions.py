@@ -37,8 +37,8 @@ class ComponentAdditionTests(unittest.TestCase):
                           self.fake_curves(args, replace(ComponentParams(), use_subcooler=enabled), ARCHITECTURES))
                 for enabled in (False, True)}
         summaries, groups = pair_results(data)
-        self.assertEqual(len(summaries), 32)
-        self.assertEqual(len({name for name, _ in groups}), 32)
+        self.assertEqual(len(summaries), 2 * len(ARCHITECTURES))
+        self.assertEqual(len({name for name, _ in groups}), 2 * len(ARCHITECTURES))
         self.assertNotIn("base_configuration", data[False][1][0][1][0])
         self.assertIn((variant_label("Conventional cascade", False)), dict(groups))
         self.assertFalse(groups[0][1][0]["with_high_stage_subcooler"])

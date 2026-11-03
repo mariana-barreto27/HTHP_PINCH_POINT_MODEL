@@ -24,9 +24,22 @@ from hthp.plots.heatmap import heatmap
 TECHNOLOGY = {
     "simples": "simple", "flash": "flash_tank", "economizador": "economizer",
     "ejetor": "ejector",
+    "expansor": "expander", "turbina": "expander",
 }
 LABEL = {"simple": "simple", "flash_tank": "flash_tank", "economizer": "economizer",
-         "ejector": "ejector_ihx"}
+         "ejector": "ejector_ihx", "expander": "expansor"}
+
+
+def _unit_fraction(value):
+    number = float(value)
+    if not np.isfinite(number) or not 0.0 <= number <= 1.0:
+        raise argparse.ArgumentTypeError("use um valor finito entre 0 e 1")
+    return number
+
+
+def _expander_options(args):
+    return dict(expander_isentropic_efficiency=args.eficiencia_expansor,
+                expander_recovery_efficiency=args.recuperacao_expansor)
 
 
 def build_parser():
@@ -43,7 +56,7 @@ def build_parser():
     parser.add_argument("--componente", choices=tuple(TECHNOLOGY), default="simples",
                         help="componente aplicado ao(s) estágio(s) escolhido(s)")
     parser.add_argument("--estagio", choices=("baixa", "alta", "ambos"), default="ambos",
-                        help="estágio que recebe flash tank, economizador ou ejetor com IHX")
+                        help="estágio que recebe o componente selecionado, incluindo expansor")
     parser.add_argument("--baixa", choices=tuple(TECHNOLOGY),
                         help="componente da baixa; use com --alta para uma combinação mista")
     parser.add_argument("--alta", choices=tuple(TECHNOLOGY),
@@ -63,7 +76,11 @@ def build_parser():
                         help="tolerância em °C da busca scipy.optimize pelo ponto ótimo")
     parser.add_argument("--temperatura-baixa", type=float, default=45.0,
                         help="condensação do estágio de baixa fixa nas análises de fonte/mapa")
-    parser.add_argument("--grupo", choices=("todos", "economizador", "flash", "ejetor", "mistas"),
+    parser.add_argument("--eficiencia-expansor", type=_unit_fraction, default=0.50,
+                        help="eficiência isentrópica do expansor [0–1]; 0 reproduz a válvula (padrão: 0.50, hipótese)")
+    parser.add_argument("--recuperacao-expansor", type=_unit_fraction, default=1.0,
+                        help="fração do trabalho do expansor aproveitada no eixo [0–1]; padrão 1: transmissão ideal")
+    parser.add_argument("--grupo", choices=("todos", "economizador", "flash", "ejetor", "mistas", "expansor", "turbina"),
                         default="todos", help="grupo de configurações na análise comparacao")
     parser.add_argument("--replotar", action="store_true",
                         help="refaz a comparação com CSVs compatíveis, sem recalcular ciclos")
@@ -90,7 +107,8 @@ def selected_case(args):
         high = tech if args.estagio in ("alta", "ambos") else "simple"
     name = next((n for n, l, h in ARCHITECTURES if (l, h) == (low, high)), None)
     if name is None:
-        raise ValueError("Combinação de componentes inválida.")
+        raise ValueError("Combinação de componentes não cadastrada. O estudo inicial do expansor "
+                         "inclui baixa, alta ou ambos com o outro ciclo convencional, sem híbridos adicionais.")
     p = ComponentParams(
         Q_target=args.carga * 1000,
         T_source_in=args.fonte,
@@ -99,6 +117,7 @@ def selected_case(args):
         high_technology=high,
         use_subcooler=args.subcooler,
         optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)),
+        **_expander_options(args),
     )
     if args.ciclo == "alta":
         name = "High-stage cycle"
@@ -143,8 +162,18 @@ def run_point(label, p, args, output):
                       f"sucção {result['P_suction']:.3f} bar; "
                       f"razão de arraste {result['ejector_entrainment_ratio']:.4f}; "
                       f"IHX {result['Q_ihx']/1000:.2f} kW (interno)")
+            if "expander_isentropic_efficiency" in result:
+                print(f"Expansor ({stage}): saída {result['P_ev']:.3f} bar; "
+                      f"potência gerada {result['W_expander']/1000:.3f} kW; "
+                      f"aproveitada {result['W_recovered']/1000:.3f} kW")
     print(f"COP: {cycle['COP']:.4f}")
-    print(f"Potência dos compressores: {cycle['W_total'] / 1000:.2f} kW")
+    if args.ciclo == "cascata" and "expander" in (p.low_technology, p.high_technology):
+        print(f"Potência bruta dos compressores: {row['W_compressor_shaft_kW']:.2f} kW")
+        print(f"Potência líquida de entrada no eixo: {row['W_net_shaft_kW']:.2f} kW")
+        print(f"Hipóteses: eficiência isentrópica {p.expander_isentropic_efficiency:g}; "
+              f"fração aproveitada no eixo {p.expander_recovery_efficiency:g}")
+    else:
+        print(f"Potência dos compressores: {cycle['W_total'] / 1000:.2f} kW")
     print(f"Resultados: {output}")
 
 
@@ -234,7 +263,8 @@ def run_comparison(args, output):
         return run_component_comparison(args, Path(output) / "adicao_componentes")
     output = Path(output)
     p = ComponentParams(Q_target=args.carga * 1000, T_source_in=args.fonte,
-                        T_cd_l_step=args.tolerancia, use_subcooler=args.subcooler)
+                        T_cd_l_step=args.tolerancia, use_subcooler=args.subcooler,
+                        **_expander_options(args))
     views = comparison_views(args.grupo)
     cases = view_cases(views)
     signature = solver_signature()
@@ -354,10 +384,23 @@ def _plot_architecture_curves(args, p, output, groups=None,
     plot_curves(groups, "low_condensation_C", "COP", x_label, "Overall COP [-]",
                 cop_title,
                 output / "cop_vs_low_stage_condensation", p)
+    has_expander = any("expander" in label.lower() for label, _ in groups)
     plot_curves(groups, "low_condensation_C", "W_shaft_kW", x_label,
-                "Compressor shaft power [kW]",
-                "Cascade compressor power — architecture comparison",
+                "Net shaft input [kW]" if has_expander else "Compressor shaft power [kW]",
+                "Cascade net power — architecture comparison" if has_expander
+                else "Cascade compressor power — architecture comparison",
                 output / "power_vs_low_stage_condensation", p)
+    if has_expander:
+        for key, ylabel, title, filename in (
+            ("W_compressor_shaft_kW", "Gross compressor shaft power [kW]",
+             "Cascade gross compressor power", "gross_compressor_power_vs_low_stage_condensation"),
+            ("W_expander_shaft_kW", "Expander shaft output [kW]",
+             "Cascade expansion work output", "expander_output_vs_low_stage_condensation"),
+            ("W_recovered_kW", "Useful recovered shaft power [kW]",
+             "Cascade useful expansion work recovery", "recovered_power_vs_low_stage_condensation"),
+        ):
+            plot_curves(groups, "low_condensation_C", key, x_label, ylabel,
+                        title, output / filename, p)
     plot_curves(groups, "low_condensation_C", "low_discharge_C", x_label,
                 "Low-stage discharge temperature [°C]",
                 "Low-stage discharge temperature — architecture comparison",
@@ -413,6 +456,7 @@ def run_all_architectures(args):
         T_source_in=args.fonte,
         T_cd_l_step=args.tolerancia,
         use_subcooler=args.subcooler,
+        **_expander_options(args),
     )
     analyses = ("ponto", "curva", "ph", "mapa", "fonte")
     for label, low, high in ARCHITECTURES:

@@ -50,12 +50,12 @@ and plots against the corresponding high-stage evaporation temperature.
 `ph` optimizes first and plots the selected cascade at that point. `mapa` shows
 COP versus source inlet and low-stage condensation temperatures. `fonte` shows
 COP versus source temperature at the requested fixed low-stage condensation.
-`comparacao` compares all sixteen supported configurations, writes an optimum
+`comparacao` compares all nineteen supported configurations, writes an optimum
 summary table, and generates shared COP, compressor-power, and discharge-
 temperature curves across the low-stage condensation-temperature sweep. The
 comparison plots use curves rather than architecture bar charts.
 
-`python run.py all` performs the selected-model analyses for all sixteen
+`python run.py all` performs the selected-model analyses for all nineteen
 configurations and then the shared comparisons. It does not reproduce old
 single-stage cases with different refrigerants and boundary conditions. IHXs
 are present only as part of the explicitly selected ejector + IHX cycle. The
@@ -63,7 +63,7 @@ new-model comparisons consistently use the same load, source condition,
 subcooler setting, refrigerants, and pinch assumptions so the architectures
 can be compared fairly.
 
-To find which of the sixteen configurations has the largest COP, run
+To find which of the nineteen configurations has the largest COP, run
 `--analise comparacao`. That explicitly optimizes each configuration and
 saves a short table and COP chart. Then select the configuration you want and
 run `--analise ph` to draw its cycle at its own optimum. `--analise curva`
@@ -78,11 +78,12 @@ resolution and operating conditions with `--tolerancia`, `--pontos`, `--carga`,
 
 ## Mixed components and comparison views
 
-Each cascade circuit can independently use a conventional cycle, flash tank,
-economizer, or ejector + IHX. The 4 x 4 combinations include the ten previous
-cases and six mixed cases. This changes connections between existing stage
-models, not the refrigerants, boundary conditions or component equations.
-Parallel compressors, expanders and double injection are NOT added by this update.
+The original four component types (conventional cycle, flash tank, economizer,
+ejector + IHX) retain all sixteen 4 x 4 combinations and the same names/order.
+Three additional cases replace the valve with a generic two-phase expander
+in the low stage, high stage or both. Expander hybrids with flash tanks,
+economizers or ejectors are not part of this initial isolated-component study.
+Parallel compressors and double injection have not been added.
 
 Select the low and high components explicitly:
 
@@ -110,21 +111,24 @@ python run.py --analise comparacao --grupo economizador
 python run.py --analise comparacao --grupo flash
 python run.py --analise comparacao --grupo ejetor
 python run.py --analise comparacao --grupo mistas
+python run.py --analise comparacao --grupo expansor
 ```
 
 Each component-family figure includes the seven configurations containing that
-component plus the conventional cascade as a clearly identified reference.
+original component plus the conventional cascade as a clearly identified reference.
+The expander family instead contains its three placements and that same reference.
 Different views reuse the same calculated points; they never run new optimizations
 just to change a plot grouping. Colors and line styles remain consistent across views.
 
 Comparison output is organized under `results/cascata/comparacao/`:
 
 - `temperature_curves/` and `optima.csv`: the original ten-case comparison is retained.
-- `todas_combinacoes/`: all sixteen cases, optima, COP, power, discharge and efficiency curves.
+- `todas_combinacoes/`: all nineteen cases, optima, COP, net power, discharge and efficiency curves.
 - `por_componente/economizador/`, `flash_tank/`, `ejetor_ihx/`: component-family COP curves.
+- `por_componente/expansor/`: conventional reference and the three expander locations, with gross/recovered/net power curves.
 - `combinacoes_mistas/`: the six mixed cases plus the conventional reference.
-- `componente_baixa_fixo/`: four views holding the LOW-stage component fixed.
-- `componente_alta_fixo/`: four views holding the HIGH-stage component fixed.
+- `componente_baixa_fixo/`: five views holding the LOW-stage component fixed.
+- `componente_alta_fixo/`: five views holding the HIGH-stage component fixed.
 
 "Fixed component" means fixed component TYPE, not a fixed temperature: these
 figures still sweep the low-stage condensation temperature. Each view includes
@@ -162,7 +166,7 @@ python run.py --analise comparacao --comparar-subcooler
 python run.py --analise comparacao --comparar-subcooler --grupo economizador
 ```
 
-The full figure has 32 cases (16 stage combinations x 2 subcooler settings).
+The full figure has 38 cases (19 architectures x 2 subcooler settings).
 Each family includes the conventional cascade without a subcooler, the
 conventional cascade with a subcooler, and each family configuration with and
 without a subcooler. For example: economizer alone; economizer + subcooler;
@@ -205,6 +209,73 @@ Only the selected analysis is generated. Files go under `results/`, in folders
 named for the cycle, configuration, and analysis. Each run writes a
 `conditions.json` so the plotted/result values can be tied to the inputs.
 P–h runs also save the state table as CSV.
+
+## Replacing the expansion valve with an expander
+
+This is expansion work recovery INSIDE the heat pump, not a separate ORC.
+The original conventional cycle and the sixteen previous configurations remain
+unchanged. The existing 170 kW duty, R32/R1233zd(E), external source/sink flows,
+compressor correlation and pinches are retained.
+
+Compare the conventional cascade with expanders in the low stage, high stage
+and both (four cases only, without recalculating the flash/economizer/ejector cases):
+
+```bash
+python run.py --analise comparacao --grupo expansor
+```
+
+Optimize and draw BOTH circuits together in the P-h diagram:
+
+```bash
+python run.py --componente expansor --estagio ambos --analise ph
+```
+
+Use `--estagio alta` or `--estagio baixa` for one circuit. `turbina` is an alias
+for `expansor`; it does NOT select a detailed turbine geometry. To compare with
+and without the existing HIGH-stage water subcooler:
+
+```bash
+python run.py --analise comparacao --grupo expansor --comparar-subcooler
+```
+
+Study assumptions are explicit and adjustable:
+
+```bash
+python run.py --componente expansor --estagio ambos --analise ponto --eficiencia-expansor 0.50 --recuperacao-expansor 0.90
+```
+
+- `--eficiencia-expansor`: isentropic expansion efficiency, default **0.50**,
+  an exploratory assumption rather than manufacturer data. Zero reproduces
+  the valve; one is ideal isentropic expansion, not a realistic default.
+- `--recuperacao-expansor`: fraction of expander shaft output used to assist
+  the compressor, default **1.0**, an IDEAL mechanical-transmission assumption.
+  Reducing this value exposes unutilized power as an external loss. It is NOT
+  the turbine's isentropic efficiency and does not add useful heating capacity.
+
+The expander changes its outlet enthalpy, evaporator heat, source outlet and
+cascade heat balance; it is NOT just a subtraction from a saved compressor
+power. COP uses NET shaft input, consistent with the integrated reference's
+unit motor efficiency. CSVs distinguish gross compressor input, gross
+expander output, recovered shaft power, unrecovered power and net input.
+The external water-subcooler heat remains included in the total 170 kW as in
+the reference: this is not 170 kW delivered entirely at 120 degC.
+
+`scipy.optimize.minimize_scalar` still searches the low-stage condensing
+temperature for maximum cascade COP. Expansion outlet pressure is the same
+evaporator pressure dictated by the boundaries; no extra arbitrary intermediate
+pressure or vapor-injection fraction is optimized. Efficiencies are fixed
+scenario inputs, not optimization variables.
+
+New comparison results go to `results/cascata/comparacao/por_componente/expansor/`, and to
+`results/cascata/low-stage_expander/`, `high-stage_expander/` or
+`expanders_in_both_stages/` for individual analyses. A family-only run does
+not overwrite the sixteen-case results previously saved in other folders.
+`all` now also includes these three expander cases; it remains a full campaign.
+
+See [the expander model notes](docs/expander_model.md) for equations,
+control-volume balances, literature and limitations. It is a generic
+equilibrium two-phase expander study, not a validated Tesla/bladed turbine
+design or a commercial-machine performance map.
 
 ## Project layout
 

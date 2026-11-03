@@ -1,4 +1,4 @@
-"""Flash tank, economizer and ejector/IHX options for the cascade model.
+"""Component options for the cascade model, including expansion work recovery.
 
 All external conditions, flow closure, water phase calculation, condenser and
 subcooler pinches, compressor coefficients, COP definition and intermediate
@@ -20,6 +20,7 @@ from hthp.cycles.flash_tank_cycle import FlashTankCycle, FlashTankCycleConfig
 from hthp.cycles.economizer_cycle import EconomizerCycle, EconomizerCycleConfig
 from hthp.cycles.simple_cycle import SimpleVaporCompressionCycle, SimpleCycleConfig
 from hthp.cycles.ejector_cycle import EjectorCycle, EjectorCycleConfig
+from hthp.cycles.expander_cycle import ExpanderCycle, ExpanderCycleConfig
 from hthp.heat_sources.fixed_temperature import FixedTemperatureHeatSource
 
 
@@ -35,6 +36,10 @@ class ComponentParams(ref.Params):
     ejector_mixing_efficiency: float = 0.50
     ejector_diffuser_efficiency: float = 0.50
     ejector_ihx_minimum_approach_K: float = 5.0
+    # Exploratory two-phase expander, not a validated turbine geometry/map.
+    expander_isentropic_efficiency: float = 0.50
+    # Useful shaft fraction: 1.0 is ideal transmission, NOT 100% expansion efficiency.
+    expander_recovery_efficiency: float = 1.0
     optimize_injection: bool = True
     injection_fraction_low: float = 0.5
     injection_fraction_high: float = 0.5
@@ -68,8 +73,15 @@ MIXED_ARCHITECTURES = (
     ("Low-stage ejector + IHX / high-stage economizer", "ejector", "economizer"),
 )
 
-# Keep the ten original names and plotting indices unchanged.
-ARCHITECTURES = BASE_ARCHITECTURES + MIXED_ARCHITECTURES
+EXPANDER_ARCHITECTURES = (
+    ("Low-stage expander", "expander", "simple"),
+    ("High-stage expander", "simple", "expander"),
+    ("Expanders in both stages", "expander", "expander"),
+)
+
+# Keep all sixteen previous names and plotting indices unchanged. The first
+# expander study isolates its location rather than adding unrequested hybrids.
+ARCHITECTURES = BASE_ARCHITECTURES + MIXED_ARCHITECTURES + EXPANDER_ARCHITECTURES
 
 
 @lru_cache(maxsize=2048)
@@ -92,6 +104,11 @@ def _solve_ejector(config):
     return EjectorCycle(config).solve()
 
 
+@lru_cache(maxsize=2048)
+def _solve_expander(config):
+    return ExpanderCycle(config).solve()
+
+
 def _normalized_stage(p, stage, Tev, Tcd, q_sc):
     fluid = p.F_h if stage == "h" else p.F_l
     technology = p.high_technology if stage == "h" else p.low_technology
@@ -109,6 +126,21 @@ def _normalized_stage(p, stage, Tev, Tcd, q_sc):
         return dict(result=result, states=s, mass=result.refrigerant_mass_flow_kg_s,
                     main_fraction=1.0, suction=s[1], discharge=s[2], condenser=s[3],
                     sc=s["3E"], evap_in=s[4], work=result.compressor_shaft_power_kW,
+                    Qev=result.evaporator_heat_kW, Pint=None,
+                    compressors=[(s[1], s[2], 1.0)])
+    if technology == "expander":
+        result = _solve_expander(ExpanderCycleConfig(
+            **kwargs, expander_isentropic_efficiency=p.expander_isentropic_efficiency,
+            expander_recovery_efficiency=p.expander_recovery_efficiency))
+        s = result.states
+        return dict(result=result, states=s, mass=result.refrigerant_mass_flow_kg_s,
+                    main_fraction=1.0, technology="expander",
+                    suction=s[1], discharge=s[2], condenser=s[3], sc=s["3E"],
+                    evap_in=s[4], work=result.net_shaft_power_kW,
+                    gross_work=result.compressor_shaft_power_kW,
+                    expander_work=result.expander_shaft_power_kW,
+                    recovered_work=result.recovered_power_kW,
+                    recovery_loss=result.unrecovered_expander_power_kW,
                     Qev=result.evaporator_heat_kW, Pint=None,
                     compressors=[(s[1], s[2], 1.0)])
     if technology == "ejector":
@@ -172,6 +204,10 @@ def _to_reference_dict(p, stage, Tev, Tcd, normalized, mass, qsc):
                                 N=speed, V_sw=volume, T_discharge=sout.temperature_C,
                                 m_dot=m, limited=not p.eta_is_min <= raw_eta <= p.eta_is_max))
     W = normalized["work"]*scale*1000
+    W_compressor = normalized.get("gross_work", normalized["work"])*scale*1000
+    W_expander = normalized.get("expander_work", 0.0)*scale*1000
+    W_recovered = normalized.get("recovered_work", 0.0)*scale*1000
+    W_recovery_loss = normalized.get("recovery_loss", 0.0)*scale*1000
     Qcond, Qev, Qsc = scale*1000, normalized["Qev"]*scale*1000, mass*qsc
     result = dict(fluid=fluid, T_ev=Tev, T_cd=Tcd, T1=suction.temperature_C,
                   T2=discharge.temperature_C, T3=cond.temperature_C, T4=sc.temperature_C,
@@ -189,11 +225,22 @@ def _to_reference_dict(p, stage, Tev, Tcd, normalized, mass, qsc):
                   V_sw=compressors[0]["V_sw"], N=compressors[0]["N"],
                   N_rpm=compressors[0]["N"]*60,
                   N_feasible=all(p.N_l_min <= c["N"] <= p.N_l_max for c in compressors),
-                  W=W, Q_cond=Qcond, Q_sc=Qsc, Q_ev=Qev, Q_total=Qcond+Qsc,
-                  COP=(Qcond+Qsc)/W, residual=Qcond+Qsc-W-Qev,
+                  W=W, W_compressor=W_compressor, W_expander=W_expander,
+                  W_recovered=W_recovered, W_recovery_loss=W_recovery_loss,
+                  Q_cond=Qcond, Q_sc=Qsc, Q_ev=Qev, Q_total=Qcond+Qsc,
+                  COP=(Qcond+Qsc)/W, residual=Qcond+Qsc+W_recovery_loss-W-Qev,
                   compressors=compressors, component_states=normalized["states"],
-                  injection_fraction=(0.0 if normalized.get("technology") == "ejector"
+                  injection_fraction=(0.0 if normalized.get("technology") in ("ejector", "expander")
                                       else 1-normalized["main_fraction"]))
+    if normalized.get("technology") == "expander":
+        result.update(
+            expander_isentropic_efficiency=p.expander_isentropic_efficiency,
+            expander_recovery_efficiency=p.expander_recovery_efficiency,
+            expander_inlet_quality=sc.quality,
+            expander_outlet_quality=evap.quality,
+            expander_inlet_entropy_kJ_kgK=sc.entropy_kJ_kgK,
+            expander_outlet_entropy_kJ_kgK=evap.entropy_kJ_kgK,
+        )
     if normalized.get("technology") == "ejector":
         ejector = normalized["result"]
         result.update(

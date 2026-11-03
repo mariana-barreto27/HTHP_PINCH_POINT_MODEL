@@ -17,10 +17,12 @@ from hthp.configurations import ARCHITECTURES, MIXED_ARCHITECTURES
 TECHNOLOGY_NAMES = {
     "simple": "conventional cycle", "flash_tank": "flash tank",
     "economizer": "economizer", "ejector": "ejector + IHX",
+    "expander": "expander",
 }
 TECHNOLOGY_FOLDERS = {
     "simple": "simples", "flash_tank": "flash_tank",
     "economizer": "economizador", "ejector": "ejetor_ihx",
+    "expander": "expansor",
 }
 
 
@@ -34,18 +36,21 @@ class ComparisonView:
 
 
 def comparison_views(group="todos"):
+    if group == "turbina":
+        group = "expansor"
     conventional = ARCHITECTURES[0]
     family_views = {}
     for technology, choice, title in (
         ("economizer", "economizador", "economizer configurations"),
         ("flash_tank", "flash", "flash-tank configurations"),
         ("ejector", "ejetor", "ejector + IHX configurations"),
+        ("expander", "expansor", "expansion work recovery"),
     ):
         cases = (conventional,) + tuple(
             case for case in ARCHITECTURES if technology in case[1:])
         family_views[choice] = ComparisonView(
             f"por_componente/{TECHNOLOGY_FOLDERS[technology]}",
-            f"Cascade COP — {title}", cases)
+            f"Cascade COP — {title}", cases, all_metrics=technology == "expander")
     mixed = ComparisonView("combinacoes_mistas", "Cascade COP — mixed configurations",
                            (conventional,) + MIXED_ARCHITECTURES)
     if group == "mistas":
@@ -54,7 +59,7 @@ def comparison_views(group="todos"):
         return (family_views[group],)
     if group != "todos":
         raise ValueError(f"Grupo de comparação desconhecido: {group}")
-    views = [ComparisonView("todas_combinacoes", "Cascade COP — all component combinations",
+    views = [ComparisonView("todas_combinacoes", "Cascade COP — all supported configurations",
                             ARCHITECTURES, all_metrics=True), *family_views.values(), mixed]
     for index, stage, folder in ((1, "Low", "componente_baixa_fixo"),
                                  (2, "High", "componente_alta_fixo")):
@@ -138,6 +143,7 @@ def load_comparison_data(folder, expected, cases, temperatures):
             raise ValueError(f"Resultados salvos incompatíveis ({key}); gere a comparação novamente.")
     with (folder / "architecture_temperature_sweeps.csv").open(newline="") as stream:
         raw_rows = list(csv.DictReader(stream))
+    needs_recovery_metrics = any("expander" in (low, high) for _, low, high in cases)
     groups = []
     for label, _, _ in cases:
         rows = []
@@ -158,6 +164,9 @@ def load_comparison_data(folder, expected, cases, temperatures):
             if row["status"] == "valid":
                 required = ("COP", "W_shaft_kW", "low_discharge_C", "high_discharge_C",
                             "low_minimum_efficiency", "high_minimum_efficiency")
+                if needs_recovery_metrics:
+                    required += ("W_net_shaft_kW", "W_compressor_shaft_kW",
+                                 "W_expander_shaft_kW", "W_recovered_kW", "W_recovery_loss_kW")
                 for key in required:
                     try:
                         complete = math.isfinite(float(row[key]))

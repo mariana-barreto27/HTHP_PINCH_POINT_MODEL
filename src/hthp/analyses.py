@@ -34,17 +34,28 @@ def _compressors(stage, p, suffix):
 
 def record(label, p, cycle):
     low, high = cycle["low"], cycle["high"]
+    compressor_power = sum(s.get("W_compressor", s["W"]) for s in (low, high))
+    expander_power = sum(s.get("W_expander", 0.0) for s in (low, high))
+    recovered_power = sum(s.get("W_recovered", 0.0) for s in (low, high))
+    recovery_loss = sum(s.get("W_recovery_loss", 0.0) for s in (low, high))
     row = dict(
         configuration=label, status="valid", with_high_stage_subcooler=p.use_subcooler,
         low_fluid=p.F_l, high_fluid=p.F_h, Q_useful_kW=cycle["Q_total"] / 1000,
         COP=cycle["COP"], W_shaft_kW=cycle["W_total"] / 1000,
+        W_net_shaft_kW=cycle["W_total"] / 1000,
+        W_compressor_shaft_kW=compressor_power / 1000,
+        W_expander_shaft_kW=expander_power / 1000,
+        W_recovered_kW=recovered_power / 1000,
+        W_recovery_loss_kW=recovery_loss / 1000,
         source_inlet_C=p.T_source_in, source_outlet_C=cycle["T_source_out"],
         water_inlet_C=cycle["T_w_cond_in"], water_outlet_C=cycle["T_w_cond_out"],
         water_outlet_quality=cycle["titulo_w_cond_out"], water_pressure_bar=p.P_w_cond,
         water_outlet_phase=cycle["fase_w_cond_out"], low_condensation_C=cycle["T_cd_l"],
         high_evaporation_C=cycle["T_ev_h"], low_evaporation_C=cycle["T_ev_l"],
         high_condensation_C=cycle["T_cd_h"], subcooler_heat_kW=high["Q_sc"] / 1000,
-        energy_residual_W=cycle["Q_total"] - cycle["W_total"] - low["Q_ev"],
+        # Unused shaft output leaves the useful system boundary; it cannot be
+        # silently returned to the source, condenser or recovered power.
+        energy_residual_W=cycle["Q_total"] + recovery_loss - cycle["W_total"] - low["Q_ev"],
         cascade_residual_W=cycle["residual_cascade"], condenser_heat_kW=high["Q_cond"] / 1000,
         source_heat_kW=low["Q_ev"] / 1000, source_mass_flow_kg_s=cycle["m_dot_source"],
         water_mass_flow_kg_s=cycle["m_dot_w_cond"], pinch_condenser_K=p.DT_pinch_cond,
@@ -56,6 +67,15 @@ def record(label, p, cycle):
             for technology in (p.low_technology, p.high_technology)),
     )
     for prefix, stage, suffix in (("low", low, "l"), ("high", high, "h")):
+        row[prefix + "_compressor_shaft_power_kW"] = stage.get("W_compressor", stage["W"]) / 1000
+        row[prefix + "_expander_shaft_power_kW"] = stage.get("W_expander", 0.0) / 1000
+        row[prefix + "_recovered_power_kW"] = stage.get("W_recovered", 0.0) / 1000
+        row[prefix + "_unrecovered_power_kW"] = stage.get("W_recovery_loss", 0.0) / 1000
+        if "expander_isentropic_efficiency" in stage:
+            for field in ("expander_isentropic_efficiency", "expander_recovery_efficiency",
+                          "expander_inlet_quality", "expander_outlet_quality",
+                          "expander_inlet_entropy_kJ_kgK", "expander_outlet_entropy_kJ_kgK"):
+                row[prefix + "_" + field] = stage[field]
         row[prefix + "_injection_pressure_bar"] = stage.get("P_int", "")
         row[prefix + "_injection_fraction"] = stage.get("injection_fraction", 0.0)
         row[prefix + "_discharge_C"] = stage["T2"]
@@ -117,6 +137,9 @@ def plot_curves(groups, xkey, ykey, xlabel, ylabel, title, path, p, legend_title
     if subcooler_comparison:
         subcooler_condition = "with / without high-stage subcooler"
     conditions = f"{p.Q_target / 1000:g} kW | {water_condition} | {subcooler_condition}"
+    if any("expander" in label.lower() for label, _ in groups):
+        conditions += (f"\nExpander: $\\eta_{{is}}$ = {p.expander_isentropic_efficiency:g} | "
+                       f"useful shaft fraction = {p.expander_recovery_efficiency:g}")
     ax.set(title=f"{title}\n{conditions}", xlabel=xlabel, ylabel=ylabel)
     add_minor_grid(ax)
     if len(groups) > 7 or legend_title:
@@ -165,7 +188,7 @@ def ph_analysis(p, cases, output_dir, cycles=None):
                             P_bar=[state.pressure_bar for state in states.values()],
                             H_J_kg=[state.enthalpy_kJ_kg * 1000 for state in states.values()])
                 technology = case.low_technology if stage == "low" else case.high_technology
-                if technology == "simple":
+                if technology in ("simple", "expander"):
                     pairs = [(1, 2, "-"), (2, 3, "-"), (3, "3E", "-"), ("3E", 4, "-"), (4, 1, "-")]
                     main_loop = [1, 2, 3, "3E", 4]
                 elif technology == "ejector":
