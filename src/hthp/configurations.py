@@ -7,7 +7,8 @@ or integrated-cycle solver is imported here. Existing component solvers are
 used at prescribed thermodynamic conditions, normalized to 1 kW condenser duty.
 """
 
-from dataclasses import dataclass, replace
+from copy import deepcopy
+from dataclasses import dataclass, fields, replace
 from functools import lru_cache
 import math
 
@@ -260,7 +261,39 @@ def _to_reference_dict(p, stage, Tev, Tcd, normalized, mass, qsc):
     return result
 
 
+# These fields do not enter a high-stage calculation at prescribed Tev/Tcd.
+# Everything else, including future parameter fields, stays in the cache key.
+# In particular, never round temperatures, fractions, or closure inputs here.
+_HIGH_STAGE_INDEPENDENT_FIELDS = frozenset({
+    "low_technology", "injection_fraction_low", "DT_source", "DT_w_cond",
+    "_evaluating_injection", "analysis_family",
+})
+
+
+def _high_stage_parameters(p):
+    return tuple((field.name, getattr(p, field.name)) for field in fields(p)
+                 if field.name not in _HIGH_STAGE_INDEPENDENT_FIELDS)
+
+
 def calcular_alta_com_componentes(p, T_ev_h, T_cd_h):
+    if ref.MODO_DIMENSIONAMENTO != "CAPACIDADE":
+        raise ValueError("Component extensions currently require CAPACIDADE sizing.")
+    # Low-stage pressure trials and external source iterations often request
+    # exactly the same completed high-stage closure. Reuse that result instead
+    # of restarting its subcooler/ejector iteration at zero. The actual solve,
+    # convergence tolerances and initial guesses are unchanged on a cache miss.
+    # Callers get a private copy because cycle dictionaries may be annotated.
+    return deepcopy(_high_stage_closure_cached(
+        _high_stage_parameters(p), T_ev_h, T_cd_h))
+
+
+@lru_cache(maxsize=256)
+def _high_stage_closure_cached(parameters, T_ev_h, T_cd_h):
+    p = ComponentParams(**dict(parameters))
+    return _high_stage_closure_uncached(p, T_ev_h, T_cd_h)
+
+
+def _high_stage_closure_uncached(p, T_ev_h, T_cd_h):
     if ref.MODO_DIMENSIONAMENTO != "CAPACIDADE":
         raise ValueError("Component extensions currently require CAPACIDADE sizing.")
     Pcd = ref.psat_bar(p.F_h, T_cd_h, 0)

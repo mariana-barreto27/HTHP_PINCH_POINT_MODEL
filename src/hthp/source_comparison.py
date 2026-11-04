@@ -14,6 +14,8 @@ from hthp.comparisons import (comparison_metadata, relative_cop_groups,
 
 def run_source_comparison(args, p, views, output):
     """Do not optimize the coupling temperature while varying the source."""
+    from hthp.cli import _sweep_rows
+
     cases = view_cases(views)
     temperatures = np.linspace(5.0, 40.0, args.pontos)
     metadata = comparison_metadata(p, args.pontos, solver_signature(), cases)
@@ -62,8 +64,10 @@ def run_source_comparison(args, p, views, output):
             print(f"Fonte {index}/{len(cases)}: {label}", flush=True)
             case = replace(p, low_technology=low, high_technology=high,
                            optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)))
-            rows = [evaluate(label, replace(case, T_source_in=float(t)), args.temperatura_baixa)
-                    for t in temperatures]
+            points = ((replace(case, T_source_in=float(t)), args.temperatura_baixa)
+                      for t in temperatures)
+            rows = _sweep_rows(args, label, points, len(temperatures), "Fonte",
+                               evaluator=evaluate)
             groups.append((label, rows))
     for view in views:
         labels = {case[0] for case in view.cases}

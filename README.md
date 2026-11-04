@@ -85,6 +85,68 @@ optima within the model bounds, not proof of a global optimum. Adjust search
 resolution and operating conditions with `--tolerancia`, `--pontos`, `--carga`,
 `--fonte`, and `--temperatura-baixa`.
 
+## Faster runs and interruption recovery
+
+Keep using the same commands, including the complete campaign:
+
+```bash
+python run.py all
+```
+
+The point, curve, comparison and P–h analyses now reuse the same **complete
+optimized cycle**, instead of optimizing it again for each output. Completed
+curve, source and map points are saved individually in
+`results/.calculation_cache.sqlite3`, including during a partial run. After
+Ctrl+C, repeat the same command: compatible points are reused and missing
+points are calculated. The point in progress when interrupted must be retried.
+The terminal reports completed points, reused points and elapsed time. All
+architectures, analyses and the existing PNG/PDF plot style remain unchanged.
+
+Cache keys include all model parameters, exact trial temperatures, solver
+source and property-library versions. Different loads, sources, refrigerants,
+subcooler options, efficiencies or equations never silently share results.
+Previously generated CSVs are not imported as partial checkpoints; the first
+run with this version creates its own compatible cache. Completed optima are
+saved after the temperature search finishes; partial optimizer iterations are
+not resumed. Identical completed high-stage/subcooler closures also reuse a
+bounded in-memory cache, without changing initial guesses, equations or
+convergence tolerances.
+
+To ignore calculations from earlier runs and calculate fresh results:
+
+```bash
+python run.py all --recalcular
+```
+
+This still shares newly computed results between outputs within that run.
+If you interrupt a forced refresh, remove `--recalcular` when restarting to
+reuse its completed points.
+`--replotar` continues to rebuild comparisons from compatible CSVs without
+solving cycles; do not combine it with `--recalcular`. The first full campaign
+can still take time, especially dense maps and mixed ejector configurations.
+
+### Low-level CoolProp queries
+
+The component property layer now uses reusable `CoolProp.AbstractState`
+instances instead of constructing a new high-level `PropsSI` request for every
+property. A state constructor reads temperature, enthalpy, entropy and quality
+after one update. Consecutive scalar queries (for example cp, cv and density at
+one suction state) also reuse that update. Each thread has its own bounded
+backend pool; cached property values and state snapshots are immutable.
+
+This changes the access method, not the refrigerants, boundary conditions,
+HEOS equations of state, compressor/ejector efficiencies or solver tolerances.
+Phase detection remains automatic; no phase is imposed and no interpolation
+tables are introduced. Property values should agree with `PropsSI` within
+numerical precision, rather than assuming bit-for-bit equality through all
+nonlinear optimizations. The existing complete-state and physical-balance
+tests remain applicable.
+
+No new command or installation is required. Because property source files
+are included in the cache signature, results saved before this migration are
+not silently reused: the first run builds a compatible cache again. See the
+[CoolProp low-level interface documentation](https://coolprop.org/coolprop/LowLevelAPI.html).
+
 ## Mixed components and comparison views
 
 The original four component types (conventional cycle, flash tank, economizer,

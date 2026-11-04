@@ -39,7 +39,8 @@ def pair_results(data):
 
 def _variant_data(args, p, cases, views, output, signature):
     # Import only at call time: CLI owns the shared physics calculation helpers.
-    from hthp.cli import _calculate_comparison_optima, _calculate_architecture_curves
+    from hthp.cli import (_calculate_comparison_optima, _calculate_architecture_curves,
+                          _calculation_cache)
 
     variant = "com_subcooler" if p.use_subcooler else "sem_subcooler"
     metadata = comparison_metadata(p, args.pontos, signature, cases)
@@ -50,7 +51,7 @@ def _variant_data(args, p, cases, views, output, signature):
                   comparison_root / "todas_combinacoes",
                   comparison_root / views[0].folder]
     failures = []
-    for source in dict.fromkeys(candidates):
+    for source in (() if getattr(args, "recalcular", False) else dict.fromkeys(candidates)):
         try:
             summaries, groups = load_comparison_data(source, metadata, cases, temperatures)
             for row in [*summaries, *(row for _, rows in groups for row in rows)]:
@@ -66,11 +67,10 @@ def _variant_data(args, p, cases, views, output, signature):
         raise ValueError(f"Faltam resultados compatíveis {variant}. "
                          "Execute sem --replotar. " + failures[-1])
     print(f"Calculando versões {variant} ({len(cases)} configurações)", flush=True)
-    # An 'all' run cache belongs to only ONE subcooler setting.
+    _calculation_cache(args)
+    # Exact parameter keys keep both subcooler settings separate while sharing
+    # the same calculation store (and same-campaign forced-refresh tracking).
     options = dict(vars(args))
-    if p.use_subcooler != args.subcooler:
-        options.pop("_optima_cache", None)
-        options.pop("_curve_cache", None)
     options["subcooler"] = p.use_subcooler
     variant_args = SimpleNamespace(**options)
     summaries = [dict(row, with_high_stage_subcooler=p.use_subcooler)

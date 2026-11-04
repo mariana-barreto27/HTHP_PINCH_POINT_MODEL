@@ -2,9 +2,11 @@
 
 import argparse
 from dataclasses import asdict, replace
+import hashlib
 import json
 import os
 from pathlib import Path
+from time import monotonic
 
 ROOT = Path(__file__).resolve().parents[2]
 os.environ.setdefault("MPLCONFIGDIR", str(ROOT / ".cache" / "matplotlib"))
@@ -20,6 +22,7 @@ from hthp.comparisons import (comparison_views, view_cases, relative_cop_groups,
 from hthp.plots.style import MM, add_minor_grid, save_figure
 from hthp.plots.heatmap import heatmap
 from hthp.optimum_report import save_optimum_report
+from hthp.calculation_cache import CalculationCache
 
 
 TECHNOLOGY = {
@@ -85,6 +88,8 @@ def build_parser():
                         default="todos", help="grupo de configurações na análise comparacao")
     parser.add_argument("--replotar", action="store_true",
                         help="refaz a comparação com CSVs compatíveis, sem recalcular ciclos")
+    parser.add_argument("--recalcular", action="store_true",
+                        help="ignora cálculos de execuções anteriores; ainda reutiliza os desta execução")
     parser.add_argument("--comparar-subcooler", action="store_true",
                         help="compara componentes com/sem subcooler e a cascata sem componentes adicionais")
     parser.add_argument("--comparar-fonte", action="store_true",
@@ -133,9 +138,72 @@ def case_folder(name, args):
     return ROOT / "results" / cycle / slug / args.analise
 
 
+_CACHE_MISSING = object()
+
+
+def _calculation_cache(args):
+    """Share exact, versioned results across analyses and interrupted runs."""
+    if not hasattr(args, "_calculation_cache"):
+        args._calculation_cache = CalculationCache(
+            ROOT / "results" / ".calculation_cache.sqlite3")
+    if not hasattr(args, "_fresh_calculations"):
+        args._fresh_calculations = set()
+    return args._calculation_cache
+
+
+def _cached_calculation(args, kind, p, coordinates, calculate):
+    cache = _calculation_cache(args)
+    # A forced refresh bypasses previous campaigns, not results just calculated
+    # by point/curve/P-h in this campaign. Parameter keys are never label-only.
+    fresh_key = hashlib.sha256(json.dumps(
+        [kind, asdict(p), coordinates], sort_keys=True).encode("utf-8")).hexdigest()
+    fresh = args._fresh_calculations
+    if not getattr(args, "recalcular", False) or fresh_key in fresh:
+        value = cache.get(kind, p, coordinates, default=_CACHE_MISSING)
+        if value is not _CACHE_MISSING:
+            args._reused_calculations = getattr(args, "_reused_calculations", 0) + 1
+            return value
+    value = calculate()
+    cache.set(kind, p, coordinates, value)
+    fresh.add(fresh_key)
+    return value
+
+
+def _cached_optimum(args, p):
+    return _cached_calculation(args, "cascade_optimum", p, None,
+                               lambda: model.otimizar_cascata(p))
+
+
+def _cached_evaluate(args, label, p, temperature, evaluator=None):
+    evaluate_point = evaluate if evaluator is None else evaluator
+    temperature = float(temperature)
+    return _cached_calculation(
+        args, "cascade_row", p,
+        {"configuration": label, "low_condensation_C": temperature},
+        lambda: evaluate_point(label, p, temperature))
+
+
+def _sweep_rows(args, label, points, total, title, evaluator=None):
+    """Persist each completed point before advancing, with bounded progress output."""
+    started = last_update = monotonic()
+    initial_reused = getattr(args, "_reused_calculations", 0)
+    interval = max(1, total // 10)
+    print(f"{title}: 0/{total} pontos — {label}", flush=True)
+    rows = []
+    for index, (case, temperature) in enumerate(points, 1):
+        rows.append(_cached_evaluate(args, label, case, temperature, evaluator=evaluator))
+        now = monotonic()
+        if index == 1 or index == total or index % interval == 0 or now - last_update >= 15:
+            reused = getattr(args, "_reused_calculations", 0) - initial_reused
+            print(f"  {title}: {index}/{total} pontos concluídos | "
+                  f"{reused} reutilizados | {now - started:.1f} s", flush=True)
+            last_update = now
+    return rows
+
+
 def run_point(label, p, args, output):
     if args.ciclo == "cascata":
-        cycle, _ = model.otimizar_cascata(p)
+        cycle, _ = _cached_optimum(args, p)
     else:
         cycle = model.ciclo_alta(p)
     row = record(label, p, cycle) if args.ciclo == "cascata" else {
@@ -144,8 +212,6 @@ def run_point(label, p, args, output):
         "high_evaporation_C": cycle["high"]["T_ev"],
         "high_condensation_C": cycle["high"]["T_cd"],
     }
-    if args.ciclo == "cascata" and hasattr(args, "_optima_cache"):
-        args._optima_cache[label] = row
     output.mkdir(parents=True, exist_ok=True)
     save_rows([row], output / "result.csv")
     (output / "conditions.json").write_text(
@@ -182,10 +248,9 @@ def run_point(label, p, args, output):
 
 def run_curve(label, p, args, output):
     temperatures = np.linspace(p.T_cd_l_min, model.T_cd_l_max(p), args.pontos)
-    rows = [evaluate(label, p, t) for t in temperatures]
-    if hasattr(args, "_curve_cache"):
-        args._curve_cache[label] = rows
-    cycle, _ = model.otimizar_cascata(p)
+    rows = _sweep_rows(args, label, ((p, t) for t in temperatures),
+                       len(temperatures), "Curva")
+    cycle, _ = _cached_optimum(args, p)
     optimum = record(label, p, cycle)
     save_rows(rows, output / "curve.csv")
     save_rows([optimum], output / "optimum.csv")
@@ -208,16 +273,15 @@ def run_map(label, p, args, output):
         model.T_cd_l_max(p) - p.DT_pinch_cascade,
         args.pontos,
     )
-    rows = []
+    points = ((replace(p, T_source_in=float(tsource)),
+               float(tev_high + p.DT_pinch_cascade))
+              for tev_high in high_evaporations for tsource in sources)
+    rows = _sweep_rows(args, label, points,
+                       len(high_evaporations) * len(sources), "Mapa")
     values = np.full((len(high_evaporations), len(sources)), np.nan)
-    for i, tev_high in enumerate(high_evaporations):
-        tcond = tev_high + p.DT_pinch_cascade
-        for j, tsource in enumerate(sources):
-            case = replace(p, T_source_in=float(tsource))
-            row = evaluate(label, case, float(tcond))
-            rows.append(row)
-            if row["status"] == "valid":
-                values[i, j] = row["COP"]
+    for index, row in enumerate(rows):
+        if row["status"] == "valid":
+            values.flat[index] = row["COP"]
     save_rows(rows, output / "map.csv")
     good = [r for r in rows if r["status"] == "valid"]
     if not good:
@@ -255,8 +319,8 @@ def run_map(label, p, args, output):
 
 def run_source(label, p, args, output):
     temps = np.linspace(5.0, 40.0, args.pontos)
-    rows = [evaluate(label, replace(p, T_source_in=float(t)), args.temperatura_baixa)
-            for t in temps]
+    points = ((replace(p, T_source_in=float(t)), args.temperatura_baixa) for t in temps)
+    rows = _sweep_rows(args, label, points, len(temps), "Fonte")
     save_rows(rows, output / "source_sweep.csv")
     plot_curves([(label, rows)], "source_inlet_C", "COP",
                 "Heat-source inlet temperature [°C]", "COP [-]",
@@ -378,13 +442,11 @@ def _calculate_comparison_optima(args, p, cases):
         print(f"Ótimo {index}/{len(cases)}: {label}", flush=True)
         case = replace(p, low_technology=low, high_technology=high,
                        optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)))
-        cached = getattr(args, "_optima_cache", {}).get(label)
-        if cached is None:
-            try:
-                cycle, _ = model.otimizar_cascata(case)
-                cached = record(label, case, cycle)
-            except ValueError as error:
-                cached = dict(configuration=label, status="invalid", reason=str(error))
+        try:
+            cycle, _ = _cached_optimum(args, case)
+            cached = record(label, case, cycle)
+        except ValueError as error:
+            cached = dict(configuration=label, status="invalid", reason=str(error))
         summaries.append(cached)
         if cached["status"] == "valid":
             print(f"  COP ótimo {float(cached['COP']):.4f}", flush=True)
@@ -395,16 +457,13 @@ def _calculate_comparison_optima(args, p, cases):
 
 def _calculate_architecture_curves(args, p, cases):
     temperatures = np.linspace(p.T_cd_l_min, model.T_cd_l_max(p), args.pontos)
-    cache = getattr(args, "_curve_cache", {})
     groups = []
     for index, (label, low, high) in enumerate(cases, 1):
         print(f"Curva {index}/{len(cases)}: {label}", flush=True)
-        if label in cache:
-            rows = cache[label]
-        else:
-            case = replace(p, low_technology=low, high_technology=high,
-                           optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)))
-            rows = [evaluate(label, case, float(t)) for t in temperatures]
+        case = replace(p, low_technology=low, high_technology=high,
+                       optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)))
+        rows = _sweep_rows(args, label, ((case, float(t)) for t in temperatures),
+                           len(temperatures), "Curva")
         groups.append((label, rows))
     return groups
 
@@ -473,7 +532,7 @@ def run_selected_analysis(label, p, args):
     elif args.analise == "ph":
         if args.ciclo != "cascata":
             raise ValueError("O diagrama P-h do ciclo isolado de alta não está configurado nesta análise.")
-        cycle, _ = model.otimizar_cascata(p)
+        cycle, _ = _cached_optimum(args, p)
         save_rows([record(label, p, cycle)], output / "optimal_point.csv")
         ph_analysis(p, [(label, p)], output, cycles=[cycle])
         print(f"P-h no ponto ótimo: Tcond,baixa = {cycle['T_cd_l']:.2f} °C; "
@@ -490,8 +549,8 @@ def run_selected_analysis(label, p, args):
 
 
 def run_all_architectures(args):
-    args._optima_cache = {}
-    args._curve_cache = {}
+    # Copies made for the two subcooler variants share the same versioned cache.
+    _calculation_cache(args)
     base = ComponentParams(
         Q_target=args.carga * 1000,
         T_source_in=args.fonte,
@@ -506,6 +565,7 @@ def run_all_architectures(args):
                     optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)))
         for analysis in analyses:
             args.analise = analysis
+            print(f"Análise: {analysis}", flush=True)
             run_selected_analysis(label, p, args)
 
     args.analise = "comparacao"
@@ -529,6 +589,8 @@ def main(argv=None):
         parser.error("Para variar a fonte, escolha --subcooler ou --sem-subcooler em execuções separadas.")
     if args.comparar_subcooler and not args.subcooler:
         parser.error("--comparar-subcooler já inclui as duas versões; retire --sem-subcooler.")
+    if args.replotar and args.recalcular:
+        parser.error("--replotar usa resultados salvos; não combine com --recalcular.")
     if args.analise == "comparacao" and args.ciclo != "cascata":
         parser.error("A comparação está definida para o ciclo cascata.")
     if args.analise == "all" and (args.baixa is not None or args.alta is not None):
@@ -547,6 +609,14 @@ def main(argv=None):
         run_selected_analysis(label, p, args)
     except (ValueError, RuntimeError) as error:
         parser.exit(2, f"Erro: {error}\n")
+    except KeyboardInterrupt:
+        resume = ("repita o comando sem --recalcular para aproveitar os pontos salvos."
+                  if args.recalcular else "repita o mesmo comando para continuar.")
+        parser.exit(130, f"\nExecução interrompida. Os pontos concluídos ficaram salvos; {resume}\n")
+    finally:
+        cache = getattr(args, "_calculation_cache", None)
+        if cache is not None:
+            cache.close()
 
 
 if __name__ == "__main__":

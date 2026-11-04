@@ -36,9 +36,11 @@ class SourceComparisonTests(unittest.TestCase):
                         COP=2 + case.T_source_in/100 + 0.1*(label != "Conventional cascade"))
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
-            with patch("hthp.source_comparison.evaluate", side_effect=evaluate), \
+            with patch("hthp.cli.ROOT", output), \
+                 patch("hthp.source_comparison.evaluate", side_effect=evaluate), \
                  patch("hthp.source_comparison.plot_curves"), patch("builtins.print"):
                 run_source_comparison(args, p, views, output)
+                self.addCleanup(args._calculation_cache.close)
             self.assertEqual(len(calls), 12)
             self.assertEqual({temperature for _, _, temperature in calls}, {45})
             self.assertEqual({case.T_source_in for _, case, _ in calls}, {5, 22.5, 40})
