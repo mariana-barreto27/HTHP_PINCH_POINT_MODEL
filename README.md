@@ -47,7 +47,16 @@ The available analyses are `ponto`, `curva`, `ph`, `mapa`, `fonte`, and
 `comparacao`. A `ponto` search finds the best low-stage condensing temperature
 for the selected cascade. `curva` sweeps the intermediate cascade condition
 and plots against the corresponding high-stage evaporation temperature.
-`ph` optimizes first and plots the selected cascade at that point. `mapa` shows
+`ph` optimizes first and plots the selected cascade at that point.
+The `curva` analysis also saves the high-stage compressor discharge temperature
+versus low-stage condensation temperature as PNG/PDF, using the same sweep.
+For the high-stage economizer case, run:
+
+```bash
+python run.py --componente economizador --estagio alta --analise curva
+```
+
+`mapa` shows
 COP versus source inlet and low-stage condensation temperatures. `fonte` shows
 COP versus source temperature at the requested fixed low-stage condensation.
 `comparacao` compares all nineteen supported configurations, writes an optimum
@@ -121,6 +130,13 @@ Different views reuse the same calculated points; they never run new optimizatio
 just to change a plot grouping. Colors and line styles remain consistent across views.
 
 Comparison output is organized under `results/cascata/comparacao/`:
+
+The full comparison also writes `descarga_vs_convencional/`: high- and low-stage
+discharge-temperature curves for all sixteen configurations together, plus one
+figure per configuration against the conventional cascade at the same low-stage
+condensation temperatures. Each view includes PNG/PDF, CSV and conditions.
+Regenerate these from compatible saved data with
+`python run.py --analise comparacao --replotar`.
 
 - `temperature_curves/` and `optima.csv`: the original ten-case comparison is retained.
 - `todas_combinacoes/`: all nineteen cases, optima, COP, net power, discharge and efficiency curves.
