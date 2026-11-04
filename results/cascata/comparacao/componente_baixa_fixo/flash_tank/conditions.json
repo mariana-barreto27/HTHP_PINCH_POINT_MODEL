@@ -56,6 +56,8 @@
     "ejector_mixing_efficiency": 0.5,
     "ejector_diffuser_efficiency": 0.5,
     "ejector_ihx_minimum_approach_K": 5.0,
+    "expander_isentropic_efficiency": 0.5,
+    "expander_recovery_efficiency": 1.0,
     "optimize_injection": true,
     "injection_fraction_low": 0.5,
     "injection_fraction_high": 0.5,
@@ -67,7 +69,7 @@
     "_evaluating_injection": false
   },
   "points": 17,
-  "solver_signature": "a36d03d4bc221952aca81bdd19b37fb32092dd105c1d4bb560f2deb5a640bd3d",
+  "solver_signature": "dd4ece47c90f34d2ef30b87b97c096162b1aadaa9b39010eed87f9f5e9b58335",
   "cases": [
     {
       "configuration": "Low-stage flash tank",

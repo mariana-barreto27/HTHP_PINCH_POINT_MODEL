@@ -68,8 +68,8 @@
     "injection_coordinate_passes": 3,
     "_evaluating_injection": false
   },
-  "points": 41,
-  "solver_signature": "2f8d34300d0671766059281eaf183ae6b0fbca6cfe28c604ff3940f5c55d06f1",
+  "points": 17,
+  "solver_signature": "dd4ece47c90f34d2ef30b87b97c096162b1aadaa9b39010eed87f9f5e9b58335",
   "cases": [
     {
       "configuration": "Conventional cascade",
