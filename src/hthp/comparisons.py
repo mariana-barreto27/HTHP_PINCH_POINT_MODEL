@@ -90,18 +90,18 @@ def compact_label(label):
             f"{TECHNOLOGY_NAMES[case[2]]} (high)")
 
 
-def relative_cop_groups(groups, reference):
+def relative_cop_groups(groups, reference, xkey="low_condensation_C"):
     """Compare at the same temperature, NEVER compare separately optimized COPs."""
     rows_by_label = dict(groups)
     reference_rows = rows_by_label[reference]
-    baseline = {round(float(row["low_condensation_C"]), 9): row
+    baseline = {round(float(row[xkey]), 9): row
                 for row in reference_rows}
     result = []
     for label, rows in groups:
         converted = []
         for row in rows:
             item = dict(row)
-            base = baseline.get(round(float(row["low_condensation_C"]), 9))
+            base = baseline.get(round(float(row[xkey]), 9))
             if (row["status"] == "valid" and base is not None
                     and base["status"] == "valid" and float(base["COP"]) > 0):
                 item["COP_gain_percent"] = 100 * (float(row["COP"])/float(base["COP"]) - 1)

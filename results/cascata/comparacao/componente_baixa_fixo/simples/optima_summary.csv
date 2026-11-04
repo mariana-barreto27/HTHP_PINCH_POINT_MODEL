@@ -1,0 +1,6 @@
+configuration,base_configuration,low_component,high_component,low_stage,high_stage,with_high_stage_subcooler,status,reason,COP_max,low_condensation_optimum_C,high_evaporation_optimum_C,W_net_shaft_kW,W_recovered_kW,COP_gain_at_own_optimum_percent,low_efficiency_limited,high_efficiency_limited
+High-stage flash tank,High-stage flash tank,simple,flash_tank,Convencional,Flash tank,True,valid,,2.552128441942007,43.44766167154194,38.44766167154194,66.6110675333569,0.0,10.343255411745634,False,False
+High-stage economizer,High-stage economizer,simple,economizer,Convencional,Economizador,True,valid,,2.5063117596682516,45.674653677479164,40.674653677479164,67.82875248628369,0.0,8.362335568070023,False,False
+High-stage expander,High-stage expander,simple,expander,Convencional,Expansor,True,valid,,2.425394155489224,55.13958768295112,50.13958768295112,70.09170019448219,4.6121510850376986,4.863800103123439,False,False
+High-stage ejector + IHX,High-stage ejector + IHX,simple,ejector,Convencional,Ejetor + IHX,True,valid,,2.3345457242103684,58.35514754120483,53.35514754120483,72.81930623033756,0.0,0.9358976152959997,False,False
+Conventional cascade,Conventional cascade,simple,simple,Convencional,Convencional,True,valid,,2.312899354309192,59.44127837076562,54.44127837076562,73.50082038082239,0.0,0.0,False,False

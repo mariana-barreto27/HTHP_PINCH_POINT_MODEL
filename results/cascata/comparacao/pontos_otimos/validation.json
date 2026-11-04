@@ -1,0 +1,85 @@
+{
+  "case_count": 38,
+  "all_valid": true,
+  "max_COP_power_residual": 8.881784197001252e-16,
+  "max_energy_residual_W": 3.842120349872857e-05,
+  "max_cascade_residual_W": 1.4551915228366852e-11,
+  "optimized_vs_41_point_grid": [
+    {
+      "configuration": "Flash tanks in both stages",
+      "sampled_minus_optimized_COP": -1.2860999472064094e-05
+    },
+    {
+      "configuration": "Low-stage economizer / high-stage flash tank",
+      "sampled_minus_optimized_COP": -3.5031422619180574e-05
+    },
+    {
+      "configuration": "Low-stage ejector + IHX / high-stage flash tank",
+      "sampled_minus_optimized_COP": -2.7425664195668276e-05
+    },
+    {
+      "configuration": "High-stage flash tank",
+      "sampled_minus_optimized_COP": -5.323718799132848e-09
+    },
+    {
+      "configuration": "Low-stage flash tank / high-stage economizer",
+      "sampled_minus_optimized_COP": -3.885720261642689e-05
+    },
+    {
+      "configuration": "Economizers in both stages",
+      "sampled_minus_optimized_COP": -2.999650439150514e-07
+    },
+    {
+      "configuration": "Low-stage ejector + IHX / high-stage economizer",
+      "sampled_minus_optimized_COP": -3.375295714658222e-05
+    },
+    {
+      "configuration": "High-stage economizer",
+      "sampled_minus_optimized_COP": -1.4667900742892925e-06
+    },
+    {
+      "configuration": "Expanders in both stages",
+      "sampled_minus_optimized_COP": -2.756849388774185e-07
+    },
+    {
+      "configuration": "High-stage expander",
+      "sampled_minus_optimized_COP": -1.144673615494085e-05
+    },
+    {
+      "configuration": "Low-stage flash tank / high-stage ejector + IHX",
+      "sampled_minus_optimized_COP": -1.8236536168725337e-05
+    },
+    {
+      "configuration": "Low-stage flash tank",
+      "sampled_minus_optimized_COP": -1.6299440250833186e-06
+    },
+    {
+      "configuration": "Low-stage economizer / high-stage ejector + IHX",
+      "sampled_minus_optimized_COP": -6.257091481476351e-05
+    },
+    {
+      "configuration": "Low-stage expander",
+      "sampled_minus_optimized_COP": -2.7914287013430794e-05
+    },
+    {
+      "configuration": "Low-stage economizer",
+      "sampled_minus_optimized_COP": -4.233267060493873e-05
+    },
+    {
+      "configuration": "Ejectors + IHXs in both stages",
+      "sampled_minus_optimized_COP": -7.53681156631103e-05
+    },
+    {
+      "configuration": "High-stage ejector + IHX",
+      "sampled_minus_optimized_COP": -2.3398060378099217e-06
+    },
+    {
+      "configuration": "Low-stage ejector + IHX",
+      "sampled_minus_optimized_COP": -0.0001101567229526701
+    },
+    {
+      "configuration": "Conventional cascade",
+      "sampled_minus_optimized_COP": -9.15453540484279e-06
+    }
+  ]
+}

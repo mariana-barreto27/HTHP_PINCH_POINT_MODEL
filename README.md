@@ -141,6 +141,29 @@ Family/mixed figures use the conventional reference; fixed-component figures use
 the matching case with a conventional cycle in the other circuit. A gap means
 the case OR its reference is unavailable there; no gain is interpolated across it.
 
+Views containing the conventional reference also write `optima_summary.csv`,
+`optima_summary.md` and a copy-ready `optima_summary.tex` table. The complete
+nineteen-case table is in `todas_combinacoes/`, sorted by maximum COP. The
+`optima_summary.png/.pdf` versions of this table are ready for slides. It lists
+the component in each stage, both optimal coupling temperatures, net shaft
+input and the gain over the conventional **own optimum**, with the same
+subcooler setting. This table gain is different from the same-temperature gain
+in the curves. The detailed `optima.csv` remains available.
+
+For a source-temperature comparison at a fixed low-stage condensation
+temperature, also request `--comparar-fonte`. For example:
+
+```bash
+python run.py --analise comparacao --grupo expansor --pontos 41 --comparar-fonte --temperatura-baixa 45
+```
+
+This adds COP and gain curves for source inlet temperatures from 5 to 40 °C
+under `comparacao/fonte/por_componente/expansor/`. It holds low-stage
+condensation at 45 °C (high-stage evaporation at 40 °C for the default 5 K
+cascade pinch); it does not optimize this temperature at each source point.
+The conventional reference uses the same source and coupling temperatures.
+Use `--subcooler` or `--sem-subcooler` for separate source campaigns.
+
 After calculating, regenerate figures without solving the cycles again:
 
 ```bash
@@ -194,6 +217,13 @@ New figures and tables go under `results/cascata/comparacao/adicao_componentes/`
 with `todas_combinacoes/`, `por_componente/` and `combinacoes_mistas/` views.
 Every gain figure uses the conventional cascade WITHOUT a subcooler as reference,
 at the same intermediate temperature. Existing comparison folders are untouched.
+The full campaign also writes the complete **38-case optimum table** to
+`results/cascata/comparacao/pontos_otimos/`, separately from the curve caches.
+Its CSV, Markdown and LaTeX include both actual subcooler versions; the PNG/PDF
+tables are split into `optima_summary_com_subcooler` and
+`optima_summary_sem_subcooler` for readability. In the table, the gain compares
+each own optimum against the conventional own optimum with the same subcooler
+setting, rather than the bare reference used by the paired gain curves.
 Compatible versioned data are reused automatically; missing/incompatible data
 are recalculated. To only regenerate the figures (fail if recalculation is needed):
 

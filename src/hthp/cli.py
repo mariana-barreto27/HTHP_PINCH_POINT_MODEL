@@ -19,6 +19,7 @@ from hthp.comparisons import (comparison_views, view_cases, relative_cop_groups,
                               comparison_metadata, load_comparison_data, solver_signature)
 from hthp.plots.style import MM, add_minor_grid, save_figure
 from hthp.plots.heatmap import heatmap
+from hthp.optimum_report import save_optimum_report
 
 
 TECHNOLOGY = {
@@ -86,6 +87,8 @@ def build_parser():
                         help="refaz a comparação com CSVs compatíveis, sem recalcular ciclos")
     parser.add_argument("--comparar-subcooler", action="store_true",
                         help="compara componentes com/sem subcooler e a cascata sem componentes adicionais")
+    parser.add_argument("--comparar-fonte", action="store_true",
+                        help="também compara COP versus entrada da fonte, com --temperatura-baixa fixa")
     return parser
 
 
@@ -297,6 +300,9 @@ def run_comparison(args, output):
         (destination / "conditions.json").write_text(
             json.dumps(conditions, indent=2, ensure_ascii=False), encoding="utf-8")
         save_rows(summary, destination / "optima.csv")
+        if "Conventional cascade" in labels:
+            save_optimum_report(summary, p, destination,
+                                render=view.folder in ("todas_combinacoes", "por_componente/expansor"))
         save_rows([row for _, rows in subset for row in rows],
                   destination / "architecture_temperature_sweeps.csv")
         if view.all_metrics:
@@ -326,6 +332,9 @@ def run_comparison(args, output):
     if not valid:
         raise ValueError("Nenhuma configuração com ponto ótimo viável neste grupo.")
     best = valid[0]
+    if args.comparar_fonte:
+        from hthp.source_comparison import run_source_comparison
+        run_source_comparison(args, p, views, output)
     print(f"Maior COP encontrado: {best['configuration']} | {float(best['COP']):.4f} | "
           f"condensação da baixa: {float(best['low_condensation_C']):.2f} °C")
     print(f"Resumo: {output / views[0].folder}")
@@ -482,8 +491,10 @@ def main(argv=None):
         args.analise = "all"
     if args.carga <= 0 or args.pontos < 3 or args.tolerancia <= 0:
         parser.error("carga e tolerância devem ser positivas; use pelo menos 3 pontos.")
-    if (args.grupo != "todos" or args.replotar or args.comparar_subcooler) and args.analise != "comparacao":
-        parser.error("--grupo, --replotar e --comparar-subcooler são opções da análise comparacao.")
+    if (args.grupo != "todos" or args.replotar or args.comparar_subcooler or args.comparar_fonte) and args.analise != "comparacao":
+        parser.error("--grupo, --replotar, --comparar-subcooler e --comparar-fonte são opções da análise comparacao.")
+    if args.comparar_fonte and args.comparar_subcooler:
+        parser.error("Para variar a fonte, escolha --subcooler ou --sem-subcooler em execuções separadas.")
     if args.comparar_subcooler and not args.subcooler:
         parser.error("--comparar-subcooler já inclui as duas versões; retire --sem-subcooler.")
     if args.analise == "comparacao" and args.ciclo != "cascata":

@@ -1,0 +1,56 @@
+# Pontos ótimos por configuração
+
+Carga útil total: 170 kW; fonte: 30 °C; refrigerantes: R32 (baixa) / R1233zd(E) (alta).
+
+Cada linha apresenta o melhor ponto encontrado para a própria configuração. O asterisco identifica a temperatura nesse ponto; não significa uma temperatura comum a todos os casos.
+
+Ganho = 100 × (COP máximo da configuração / COP máximo convencional − 1), sempre com o mesmo estado do subcooler. Nos gráficos de ganho, a referência é comparada à mesma temperatura, o que é uma comparação diferente.
+
+SC alta: subcooler externo somente no estágio de alta; versões com e sem são calculadas separadamente.
+
+Nos gráficos de adição de componentes, a referência é o convencional sem subcooler; nesta tabela o ganho mantém o mesmo estado do subcooler para isolar o efeito da arquitetura.
+
+Expansor: eficiência isentrópica = 0.5; fração útil da potência de eixo = 1. São hipóteses exploratórias, não dados validados de fabricante. A potência líquida desconta a potência recuperada.
+
+— indica valor indisponível. Casos inviáveis permanecem identificados abaixo da tabela.
+
+| Estágio de baixa | Estágio de alta | SC alta | COP máximo | Tcond,baixa* [°C] | Tevap,alta* [°C] | Potência líquida [kW] | Ganho entre ótimos [%] |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Flash tank | Flash tank | Sim | 2.584 | 50.62 | 45.62 | 65.80 | 11.71 |
+| Economizador | Flash tank | Sim | 2.571 | 48.76 | 43.76 | 66.13 | 11.15 |
+| Ejetor + IHX | Flash tank | Sim | 2.556 | 44.25 | 39.25 | 66.51 | 10.52 |
+| Convencional | Flash tank | Sim | 2.552 | 43.45 | 38.45 | 66.61 | 10.34 |
+| Flash tank | Economizador | Sim | 2.544 | 53.35 | 48.35 | 66.83 | 9.99 |
+| Economizador | Economizador | Sim | 2.530 | 51.55 | 46.55 | 67.20 | 9.37 |
+| Ejetor + IHX | Economizador | Sim | 2.511 | 46.53 | 41.53 | 67.70 | 8.56 |
+| Convencional | Economizador | Sim | 2.506 | 45.67 | 40.67 | 67.83 | 8.36 |
+| Expansor | Expansor | Sim | 2.485 | 59.56 | 54.56 | 68.42 | 7.42 |
+| Flash tank | Flash tank | Não | 2.473 | 55.79 | 50.79 | 68.75 | 15.84 |
+| Economizador | Flash tank | Não | 2.458 | 54.07 | 49.07 | 69.16 | 15.16 |
+| Ejetor + IHX | Flash tank | Não | 2.436 | 48.61 | 43.61 | 69.78 | 14.13 |
+| Convencional | Flash tank | Não | 2.431 | 47.74 | 42.74 | 69.93 | 13.89 |
+| Flash tank | Economizador | Não | 2.425 | 58.45 | 53.45 | 70.09 | 13.63 |
+| Convencional | Expansor | Sim | 2.425 | 55.14 | 50.14 | 70.09 | 4.86 |
+| Flash tank | Ejetor + IHX | Sim | 2.418 | 65.56 | 60.56 | 70.30 | 4.55 |
+| Economizador | Economizador | Não | 2.410 | 56.82 | 51.82 | 70.54 | 12.90 |
+| Flash tank | Convencional | Sim | 2.401 | 66.54 | 61.54 | 70.80 | 3.81 |
+| Economizador | Ejetor + IHX | Sim | 2.398 | 64.60 | 59.60 | 70.90 | 3.66 |
+| Ejetor + IHX | Economizador | Não | 2.383 | 50.92 | 45.92 | 71.33 | 11.65 |
+| Expansor | Convencional | Sim | 2.381 | 63.96 | 58.96 | 71.39 | 2.96 |
+| Economizador | Convencional | Sim | 2.380 | 65.67 | 60.67 | 71.42 | 2.91 |
+| Convencional | Economizador | Não | 2.378 | 49.99 | 44.99 | 71.50 | 11.38 |
+| Expansor | Expansor | Não | 2.347 | 63.87 | 58.87 | 72.45 | 9.93 |
+| Ejetor + IHX | Ejetor + IHX | Sim | 2.345 | 59.17 | 54.17 | 72.50 | 1.37 |
+| Convencional | Ejetor + IHX | Sim | 2.335 | 58.36 | 53.36 | 72.82 | 0.94 |
+| Ejetor + IHX | Convencional | Sim | 2.324 | 60.25 | 55.25 | 73.16 | 0.46 |
+| Convencional | Convencional | Sim | 2.313 | 59.44 | 54.44 | 73.50 | 0.00 |
+| Convencional | Expansor | Não | 2.281 | 59.40 | 54.40 | 74.52 | 6.87 |
+| Flash tank | Ejetor + IHX | Não | 2.260 | 70.32 | 65.32 | 75.22 | 5.87 |
+| Economizador | Ejetor + IHX | Não | 2.240 | 69.61 | 64.61 | 75.90 | 4.93 |
+| Flash tank | Convencional | Não | 2.236 | 71.05 | 66.05 | 76.04 | 4.74 |
+| Economizador | Convencional | Não | 2.215 | 70.71 | 65.71 | 76.73 | 3.79 |
+| Expansor | Convencional | Não | 2.209 | 68.69 | 63.69 | 76.97 | 3.47 |
+| Ejetor + IHX | Ejetor + IHX | Não | 2.175 | 64.03 | 59.03 | 78.16 | 1.89 |
+| Convencional | Ejetor + IHX | Não | 2.164 | 63.21 | 58.21 | 78.58 | 1.36 |
+| Ejetor + IHX | Convencional | Não | 2.147 | 65.27 | 60.27 | 79.20 | 0.56 |
+| Convencional | Convencional | Não | 2.135 | 64.45 | 59.45 | 79.64 | 0.00 |

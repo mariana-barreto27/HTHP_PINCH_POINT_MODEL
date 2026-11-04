@@ -1,0 +1,34 @@
+% Requer \usepackage{booktabs}; bloco tabular, não documento completo.
+% Carga útil total: 170 kW; fonte: 30 °C; refrigerantes: R32 (baixa) / R1233zd(E) (alta).
+% Cada linha apresenta o melhor ponto encontrado para a própria configuração. O asterisco identifica a temperatura nesse ponto; não significa uma temperatura comum a todos os casos.
+% Ganho = 100 × (COP máximo da configuração / COP máximo convencional − 1), sempre com o mesmo estado do subcooler. Nos gráficos de ganho, a referência é comparada à mesma temperatura, o que é uma comparação diferente.
+% Subcooler externo somente no estágio de alta.
+% Expansor: eficiência isentrópica = 0.5; fração útil da potência de eixo = 1. São hipóteses exploratórias, não dados validados de fabricante. A potência líquida desconta a potência recuperada.
+% — indica valor indisponível. Casos inviáveis permanecem identificados abaixo da tabela.
+{\small\setlength{\tabcolsep}{4pt}\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{llrrrrr}
+\toprule
+Estágio de baixa & Estágio de alta & $COP_{\max}$ & \shortstack{$T_{\mathrm{cond,l}}^*$\\{[°C]}} & \shortstack{$T_{\mathrm{evap,h}}^*$\\{[°C]}} & \shortstack{$\dot W_{\mathrm{liq}}$\\{[kW]}} & \shortstack{$\Delta COP_{\mathrm{opt}}$\\{[\%]}} \\
+\midrule
+Flash tank & Flash tank & 2.584 & 50.62 & 45.62 & 65.80 & 11.71 \\
+Economizador & Flash tank & 2.571 & 48.76 & 43.76 & 66.13 & 11.15 \\
+Ejetor + IHX & Flash tank & 2.556 & 44.25 & 39.25 & 66.51 & 10.52 \\
+Convencional & Flash tank & 2.552 & 43.45 & 38.45 & 66.61 & 10.34 \\
+Flash tank & Economizador & 2.544 & 53.35 & 48.35 & 66.83 & 9.99 \\
+Economizador & Economizador & 2.530 & 51.55 & 46.55 & 67.20 & 9.37 \\
+Ejetor + IHX & Economizador & 2.511 & 46.53 & 41.53 & 67.70 & 8.56 \\
+Convencional & Economizador & 2.506 & 45.67 & 40.67 & 67.83 & 8.36 \\
+Expansor & Expansor & 2.485 & 59.56 & 54.56 & 68.42 & 7.42 \\
+Convencional & Expansor & 2.425 & 55.14 & 50.14 & 70.09 & 4.86 \\
+Flash tank & Ejetor + IHX & 2.418 & 65.56 & 60.56 & 70.30 & 4.55 \\
+Flash tank & Convencional & 2.401 & 66.54 & 61.54 & 70.80 & 3.81 \\
+Economizador & Ejetor + IHX & 2.398 & 64.60 & 59.60 & 70.90 & 3.66 \\
+Expansor & Convencional & 2.381 & 63.96 & 58.96 & 71.39 & 2.96 \\
+Economizador & Convencional & 2.380 & 65.67 & 60.67 & 71.42 & 2.91 \\
+Ejetor + IHX & Ejetor + IHX & 2.345 & 59.17 & 54.17 & 72.50 & 1.37 \\
+Convencional & Ejetor + IHX & 2.335 & 58.36 & 53.36 & 72.82 & 0.94 \\
+Ejetor + IHX & Convencional & 2.324 & 60.25 & 55.25 & 73.16 & 0.46 \\
+Convencional & Convencional & 2.313 & 59.44 & 54.44 & 73.50 & 0.00 \\
+\bottomrule
+\end{tabular}
+}

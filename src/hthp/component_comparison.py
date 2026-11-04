@@ -13,6 +13,7 @@ from hthp.comparisons import (comparison_metadata, comparison_views,
                               load_comparison_data, relative_cop_groups,
                               solver_signature, view_cases)
 from hthp.configurations import ComponentParams
+from hthp.optimum_report import save_optimum_report, save_combined_optima_report
 
 
 def variant_label(label, with_subcooler):
@@ -101,6 +102,8 @@ def run_component_comparison(args, output):
     data = {enabled: _variant_data(args, replace(p, use_subcooler=enabled), cases,
                                    views, output, signature) for enabled in (False, True)}
     summaries, groups = pair_results(data)
+    if args.grupo == "todos":
+        save_combined_optima_report(summaries, p, output.parent / "pontos_otimos", signature)
     reference = variant_label("Conventional cascade", False)
     for view in views:
         labels = {case[0] for case in view.cases}
@@ -126,6 +129,8 @@ def run_component_comparison(args, output):
         (destination / "conditions.json").write_text(
             json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
         save_rows(summary, destination / "optima.csv")
+        save_optimum_report(summary, p, destination,
+                            render=view.folder in ("todas_combinacoes", "por_componente/expansor"))
         save_rows([row for _, rows in subset for row in rows],
                   destination / "architecture_temperature_sweeps.csv")
         plot_curves(subset, "low_condensation_C", "COP",
