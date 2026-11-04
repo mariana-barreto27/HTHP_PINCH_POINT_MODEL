@@ -192,6 +192,11 @@ def run_curve(label, p, args, output):
     plot_curves([(label, rows)], "high_evaporation_C", "COP",
                 "High-stage evaporation temperature [°C]", "COP [-]",
                 "Cascade COP", output / "cop_vs_high_stage_evaporation", p)
+    plot_curves([(label, rows)], "low_condensation_C", "high_discharge_C",
+                "Low-stage condensation temperature [°C]",
+                "High-stage discharge temperature [°C]",
+                "High-stage compressor discharge temperature",
+                output / "high_stage_discharge_vs_low_stage_condensation", p)
     print(f"Ponto ótimo: {cycle['T_cd_l']:.2f} °C | COP {cycle['COP']:.4f}")
     print(f"Resultados: {output}")
 
@@ -320,6 +325,7 @@ def run_comparison(args, output):
                     legend_title=f"Reference: {view.reference}\nAt the same intermediate temperature")
         print(f"Gráficos e tabela: {destination}", flush=True)
     if args.grupo == "todos":
+        _plot_discharge_comparisons(groups, p, output / "descarga_vs_convencional")
         # Preserve the previous ten-case plots and their familiar filenames.
         labels = {case[0] for case in BASE_ARCHITECTURES}
         legacy = [(label, rows) for label, rows in groups if label in labels]
@@ -338,6 +344,32 @@ def run_comparison(args, output):
     print(f"Maior COP encontrado: {best['configuration']} | {float(best['COP']):.4f} | "
           f"condensação da baixa: {float(best['low_condensation_C']):.2f} °C")
     print(f"Resumo: {output / views[0].folder}")
+
+
+def _plot_discharge_comparisons(groups, p, output):
+    """Compare each architecture with the conventional cascade on the same grid."""
+    reference = "Conventional cascade"
+    baseline = next(group for group in groups if group[0] == reference)
+    selections = [("todas_configuracoes", groups)]
+    for label, rows in groups:
+        if label == reference:
+            continue
+        slug = label.lower().replace(" / ", "__").replace(" ", "_")
+        selections.append((slug, [baseline, (label, rows)]))
+    for slug, selected in selections:
+        destination = output / slug
+        save_rows([row for _, rows in selected for row in rows], destination / "curve.csv")
+        (destination / "conditions.json").write_text(
+            json.dumps(dict(parameters=asdict(p), reference=reference,
+                            configurations=[label for label, _ in selected]), indent=2),
+            encoding="utf-8")
+        for stage, title in (("high", "High"), ("low", "Low")):
+            plot_curves(selected, "low_condensation_C", f"{stage}_discharge_C",
+                        "Low-stage condensation temperature [°C]",
+                        f"{title}-stage discharge temperature [°C]",
+                        f"{title}-stage compressor discharge temperature",
+                        destination / f"{stage}_stage_discharge_vs_low_stage_condensation", p,
+                        legend_title="Reference: conventional cascade")
 
 
 def _calculate_comparison_optima(args, p, cases):
