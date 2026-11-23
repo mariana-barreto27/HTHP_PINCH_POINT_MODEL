@@ -68,8 +68,8 @@
     "injection_coordinate_passes": 3,
     "_evaluating_injection": false
   },
-  "points": 41,
-  "solver_signature": "2f8d34300d0671766059281eaf183ae6b0fbca6cfe28c604ff3940f5c55d06f1",
+  "points": 17,
+  "solver_signature": "2970432fabd5c3072943bd34102d12c1b996fff0ae6da33beba70ef3af22ab61",
   "cases": [
     {
       "configuration": "Conventional cascade",
@@ -95,6 +95,51 @@
       "configuration": "High-stage expander",
       "low": "simple",
       "high": "expander"
+    },
+    {
+      "configuration": "High-stage flash tank + expander before tank",
+      "low": "simple",
+      "high": "flash_expander_before"
+    },
+    {
+      "configuration": "High-stage flash tank + expander after tank",
+      "low": "simple",
+      "high": "flash_expander_after"
+    },
+    {
+      "configuration": "High-stage flash tank + two expanders",
+      "low": "simple",
+      "high": "flash_expander_both"
+    },
+    {
+      "configuration": "High-stage economizer + main-stream expander",
+      "low": "simple",
+      "high": "economizer_expander_main"
+    },
+    {
+      "configuration": "High-stage economizer + injection-stream expander",
+      "low": "simple",
+      "high": "economizer_expander_injection"
+    },
+    {
+      "configuration": "High-stage economizer + two expanders",
+      "low": "simple",
+      "high": "economizer_expander_both"
+    },
+    {
+      "configuration": "High-stage ejector + IHX + liquid-stream expander",
+      "low": "simple",
+      "high": "ejector_expander"
+    },
+    {
+      "configuration": "High-stage flash tank + ejector + IHX",
+      "low": "simple",
+      "high": "flash_ejector"
+    },
+    {
+      "configuration": "High-stage economizer + ejector + IHX",
+      "low": "simple",
+      "high": "economizer_ejector"
     }
   ],
   "reference": "Conventional cascade",

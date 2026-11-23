@@ -68,8 +68,8 @@
     "injection_coordinate_passes": 3,
     "_evaluating_injection": false
   },
-  "points": 41,
-  "solver_signature": "2f8d34300d0671766059281eaf183ae6b0fbca6cfe28c604ff3940f5c55d06f1",
+  "points": 17,
+  "solver_signature": "2970432fabd5c3072943bd34102d12c1b996fff0ae6da33beba70ef3af22ab61",
   "cases": [
     {
       "configuration": "High-stage flash tank",
@@ -89,6 +89,11 @@
     {
       "configuration": "Low-stage ejector + IHX / high-stage flash tank",
       "low": "ejector",
+      "high": "flash_tank"
+    },
+    {
+      "configuration": "Low-stage expander / high-stage flash tank",
+      "low": "expander",
       "high": "flash_tank"
     }
   ],

@@ -41,7 +41,7 @@ class SourceComparisonTests(unittest.TestCase):
                  patch("hthp.source_comparison.plot_curves"), patch("builtins.print"):
                 run_source_comparison(args, p, views, output)
                 self.addCleanup(args._calculation_cache.close)
-            self.assertEqual(len(calls), 12)
+            self.assertEqual(len(calls), 3 * len(views[0].cases))
             self.assertEqual({temperature for _, _, temperature in calls}, {45})
             self.assertEqual({case.T_source_in for _, case, _ in calls}, {5, 22.5, 40})
             self.assertTrue(all(case.Q_target == 170000 and case.use_subcooler for _, case, _ in calls))

@@ -15,6 +15,7 @@ from hthp.analyses import plot_curves, record
 from hthp.cli import build_parser, main, run_comparison
 from hthp.component_comparison import pair_results, variant_label
 from hthp.configurations import ARCHITECTURES, ComponentParams
+from hthp.comparisons import comparison_views
 
 
 class ComponentAdditionTests(unittest.TestCase):
@@ -26,7 +27,10 @@ class ComponentAdditionTests(unittest.TestCase):
     def fake_curves(self, args, p, cases):
         return [(label, [dict(configuration=label, status="valid", COP=2+0.1*p.use_subcooler,
                               low_condensation_C=float(t), with_high_stage_subcooler=p.use_subcooler,
-                              W_shaft_kW=80, low_discharge_C=90, high_discharge_C=140,
+                              W_shaft_kW=80, W_net_shaft_kW=80,
+                              W_compressor_shaft_kW=90, W_expander_shaft_kW=12.5,
+                              W_recovered_kW=10, W_recovery_loss_kW=2.5,
+                              low_discharge_C=90, high_discharge_C=140,
                               low_minimum_efficiency=0.75, high_minimum_efficiency=0.72)
                          for t in np.linspace(p.T_cd_l_min, model.T_cd_l_max(p), args.pontos)])
                 for label, _, _ in cases]
@@ -69,7 +73,8 @@ class ComponentAdditionTests(unittest.TestCase):
                 self.assertEqual(item["parameters"]["high_technology"], expected_high)
                 self.assertEqual(item["parameters"]["use_subcooler"], expected_subcooler)
             with (destination / "optima.csv").open() as stream:
-                self.assertEqual(len(list(csv.DictReader(stream))), 16)
+                self.assertEqual(len(list(csv.DictReader(stream))),
+                                 2 * len(comparison_views("economizador")[0].cases))
             self.assertTrue(all(call.kwargs['subcooler_comparison'] for call in plot.call_args_list))
             self.assertNotIn("legend_title", plot.call_args_list[0].kwargs)
             with (destination / "cop_gains.csv").open() as stream:

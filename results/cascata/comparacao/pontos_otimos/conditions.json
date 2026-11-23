@@ -1,10 +1,10 @@
 {
   "analysis": "pontos_otimos",
-  "solver_signature": "2f8d34300d0671766059281eaf183ae6b0fbca6cfe28c604ff3940f5c55d06f1",
+  "solver_signature": "2970432fabd5c3072943bd34102d12c1b996fff0ae6da33beba70ef3af22ab61",
   "parameters_by_subcooler": {
     "False": {
       "F_source": "Air",
-      "T_source_in": 30,
+      "T_source_in": 30.0,
       "P_source": 1.0,
       "MODO_AGUA_COND": "SATURADO",
       "T_w_cond_in": 120,
@@ -28,7 +28,7 @@
       "SUP_l": 5.0,
       "SUB_h": 0.01,
       "SUB_l": 0.01,
-      "Q_target": 170000,
+      "Q_target": 170000.0,
       "V_sw_h": 0.0014,
       "N_h": 60.0,
       "C_h": 0.02,
@@ -72,7 +72,7 @@
     },
     "True": {
       "F_source": "Air",
-      "T_source_in": 30,
+      "T_source_in": 30.0,
       "P_source": 1.0,
       "MODO_AGUA_COND": "SATURADO",
       "T_w_cond_in": 120,
@@ -96,7 +96,7 @@
       "SUP_l": 5.0,
       "SUB_h": 0.01,
       "SUB_l": 0.01,
-      "Q_target": 170000,
+      "Q_target": 170000.0,
       "V_sw_h": 0.0014,
       "N_h": 60.0,
       "C_h": 0.02,
@@ -234,9 +234,174 @@
       "configuration": "Expanders in both stages",
       "low": "expander",
       "high": "expander"
+    },
+    {
+      "configuration": "Low-stage expander / high-stage flash tank",
+      "low": "expander",
+      "high": "flash_tank"
+    },
+    {
+      "configuration": "Low-stage flash tank / high-stage expander",
+      "low": "flash_tank",
+      "high": "expander"
+    },
+    {
+      "configuration": "Low-stage expander / high-stage economizer",
+      "low": "expander",
+      "high": "economizer"
+    },
+    {
+      "configuration": "Low-stage economizer / high-stage expander",
+      "low": "economizer",
+      "high": "expander"
+    },
+    {
+      "configuration": "Low-stage expander / high-stage ejector + IHX",
+      "low": "expander",
+      "high": "ejector"
+    },
+    {
+      "configuration": "Low-stage ejector + IHX / high-stage expander",
+      "low": "ejector",
+      "high": "expander"
+    },
+    {
+      "configuration": "Low-stage flash tank + expander before tank",
+      "low": "flash_expander_before",
+      "high": "simple"
+    },
+    {
+      "configuration": "High-stage flash tank + expander before tank",
+      "low": "simple",
+      "high": "flash_expander_before"
+    },
+    {
+      "configuration": "Both stages: flash tank + expander before tank",
+      "low": "flash_expander_before",
+      "high": "flash_expander_before"
+    },
+    {
+      "configuration": "Low-stage flash tank + expander after tank",
+      "low": "flash_expander_after",
+      "high": "simple"
+    },
+    {
+      "configuration": "High-stage flash tank + expander after tank",
+      "low": "simple",
+      "high": "flash_expander_after"
+    },
+    {
+      "configuration": "Both stages: flash tank + expander after tank",
+      "low": "flash_expander_after",
+      "high": "flash_expander_after"
+    },
+    {
+      "configuration": "Low-stage flash tank + two expanders",
+      "low": "flash_expander_both",
+      "high": "simple"
+    },
+    {
+      "configuration": "High-stage flash tank + two expanders",
+      "low": "simple",
+      "high": "flash_expander_both"
+    },
+    {
+      "configuration": "Both stages: flash tank + two expanders",
+      "low": "flash_expander_both",
+      "high": "flash_expander_both"
+    },
+    {
+      "configuration": "Low-stage economizer + main-stream expander",
+      "low": "economizer_expander_main",
+      "high": "simple"
+    },
+    {
+      "configuration": "High-stage economizer + main-stream expander",
+      "low": "simple",
+      "high": "economizer_expander_main"
+    },
+    {
+      "configuration": "Both stages: economizer + main-stream expander",
+      "low": "economizer_expander_main",
+      "high": "economizer_expander_main"
+    },
+    {
+      "configuration": "Low-stage economizer + injection-stream expander",
+      "low": "economizer_expander_injection",
+      "high": "simple"
+    },
+    {
+      "configuration": "High-stage economizer + injection-stream expander",
+      "low": "simple",
+      "high": "economizer_expander_injection"
+    },
+    {
+      "configuration": "Both stages: economizer + injection-stream expander",
+      "low": "economizer_expander_injection",
+      "high": "economizer_expander_injection"
+    },
+    {
+      "configuration": "Low-stage economizer + two expanders",
+      "low": "economizer_expander_both",
+      "high": "simple"
+    },
+    {
+      "configuration": "High-stage economizer + two expanders",
+      "low": "simple",
+      "high": "economizer_expander_both"
+    },
+    {
+      "configuration": "Both stages: economizer + two expanders",
+      "low": "economizer_expander_both",
+      "high": "economizer_expander_both"
+    },
+    {
+      "configuration": "Low-stage ejector + IHX + liquid-stream expander",
+      "low": "ejector_expander",
+      "high": "simple"
+    },
+    {
+      "configuration": "High-stage ejector + IHX + liquid-stream expander",
+      "low": "simple",
+      "high": "ejector_expander"
+    },
+    {
+      "configuration": "Both stages: ejector + IHX + liquid-stream expander",
+      "low": "ejector_expander",
+      "high": "ejector_expander"
+    },
+    {
+      "configuration": "Low-stage flash tank + ejector + IHX",
+      "low": "flash_ejector",
+      "high": "simple"
+    },
+    {
+      "configuration": "High-stage flash tank + ejector + IHX",
+      "low": "simple",
+      "high": "flash_ejector"
+    },
+    {
+      "configuration": "Both stages: flash tank + ejector + IHX",
+      "low": "flash_ejector",
+      "high": "flash_ejector"
+    },
+    {
+      "configuration": "Low-stage economizer + ejector + IHX",
+      "low": "economizer_ejector",
+      "high": "simple"
+    },
+    {
+      "configuration": "High-stage economizer + ejector + IHX",
+      "low": "simple",
+      "high": "economizer_ejector"
+    },
+    {
+      "configuration": "Both stages: economizer + ejector + IHX",
+      "low": "economizer_ejector",
+      "high": "economizer_ejector"
     }
   ],
-  "case_count": 38,
+  "case_count": 104,
   "optimization": "scipy.optimize.minimize_scalar (bounded)",
   "gain_comparison": "each case at its own optimum; conventional with matching subcooler setting"
 }

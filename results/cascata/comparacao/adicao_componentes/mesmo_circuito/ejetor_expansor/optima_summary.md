@@ -1,0 +1,38 @@
+# Pontos ótimos por configuração
+
+Carga útil total: 170 kW; fonte: 30 °C; refrigerantes: R32 (baixa) / R1233zd(E) (alta).
+
+Cada linha apresenta o melhor ponto encontrado para a própria configuração. O asterisco identifica a temperatura nesse ponto; não significa uma temperatura comum a todos os casos.
+
+Ganho = 100 × (COP máximo da configuração / COP máximo convencional − 1), sempre com o mesmo estado do subcooler. Nos gráficos de ganho, a referência é comparada à mesma temperatura, o que é uma comparação diferente.
+
+SC alta: subcooler externo somente no estágio de alta; versões com e sem são calculadas separadamente.
+
+Nos gráficos de adição de componentes, a referência é o convencional sem subcooler; nesta tabela o ganho mantém o mesmo estado do subcooler para isolar o efeito da arquitetura.
+
+Expansor: eficiência isentrópica = 0.5; fração útil da potência de eixo = 1. São hipóteses exploratórias, não dados validados de fabricante. A potência líquida desconta a potência recuperada.
+
+— indica valor indisponível. Casos inviáveis permanecem identificados abaixo da tabela.
+
+| Estágio de baixa | Estágio de alta | SC alta | COP máximo | Tcond,baixa* [°C] | Tevap,alta* [°C] | Potência líquida [kW] | Ganho entre ótimos [%] |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Expansor | Expansor | Sim | 2.485 | 59.56 | 54.56 | 68.42 | 7.42 |
+| Convencional | Expansor | Sim | 2.425 | 55.14 | 50.14 | 70.09 | 4.86 |
+| Expansor | Convencional | Sim | 2.381 | 63.96 | 58.96 | 71.39 | 2.96 |
+| Expansor | Expansor | Não | 2.347 | 63.87 | 58.87 | 72.45 | 9.93 |
+| Ejetor + IHX + expansor no líquido | Ejetor + IHX + expansor no líquido | Sim | 2.345 | 59.18 | 54.18 | 72.50 | 1.38 |
+| Ejetor + IHX | Ejetor + IHX | Sim | 2.345 | 59.17 | 54.17 | 72.50 | 1.37 |
+| Convencional | Ejetor + IHX + expansor no líquido | Sim | 2.335 | 58.35 | 53.35 | 72.82 | 0.94 |
+| Convencional | Ejetor + IHX | Sim | 2.335 | 58.36 | 53.36 | 72.82 | 0.94 |
+| Ejetor + IHX + expansor no líquido | Convencional | Sim | 2.324 | 60.25 | 55.25 | 73.16 | 0.47 |
+| Ejetor + IHX | Convencional | Sim | 2.324 | 60.25 | 55.25 | 73.16 | 0.46 |
+| Convencional | Convencional | Sim | 2.313 | 59.44 | 54.44 | 73.50 | 0.00 |
+| Convencional | Expansor | Não | 2.281 | 59.40 | 54.40 | 74.52 | 6.87 |
+| Expansor | Convencional | Não | 2.209 | 68.69 | 63.69 | 76.97 | 3.47 |
+| Ejetor + IHX + expansor no líquido | Ejetor + IHX + expansor no líquido | Não | 2.175 | 64.04 | 59.04 | 78.15 | 1.91 |
+| Ejetor + IHX | Ejetor + IHX | Não | 2.175 | 64.03 | 59.03 | 78.16 | 1.89 |
+| Convencional | Ejetor + IHX + expansor no líquido | Não | 2.164 | 63.21 | 58.21 | 78.57 | 1.36 |
+| Convencional | Ejetor + IHX | Não | 2.164 | 63.21 | 58.21 | 78.58 | 1.36 |
+| Ejetor + IHX + expansor no líquido | Convencional | Não | 2.147 | 65.27 | 60.27 | 79.19 | 0.57 |
+| Ejetor + IHX | Convencional | Não | 2.147 | 65.27 | 60.27 | 79.20 | 0.56 |
+| Convencional | Convencional | Não | 2.135 | 64.45 | 59.45 | 79.64 | 0.00 |

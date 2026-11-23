@@ -1,0 +1,25 @@
+configuration,stage,number,solver_state,fluid,pressure_bar,enthalpy_kJ_kg,low_condensation_C,COP
+Both stages: ejector + IHX + liquid-stream expander,low,1,suction,R32,14.929774903539839,524.1762613656548,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,low,2,discharge,R32,38.62600959317431,574.4337282431743,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,low,3,condenser_out,R32,38.62600959317431,319.74286897004,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,low,3,subcooler_out,R32,38.62600959317431,319.74286897004,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,low,4,motive_in,R32,38.62600959317431,312.4442066024689,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,low,5,nozzle_out,R32,14.722432551889298,308.8916115355374,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,low,6,mixing,R32,14.722432551889298,399.8752804280972,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,low,7,ejector_out,R32,14.929774901890585,400.4814556467003,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,low,8,separator_vapour,R32,14.929774903539839,516.8775989980837,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,low,9,separator_liquid,R32,14.929774903539839,236.9629950251685,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,low,10,evaporator_in,R32,14.722432551889298,236.95202284060375,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,low,11,evaporator_out,R32,14.722432551889298,524.1600847388456,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,high,1,suction,R1233zd(E),3.4112988242822753,444.85023277338536,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,high,2,discharge,R1233zd(E),17.395515183340894,486.68177375368225,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,high,3,condenser_out,R1233zd(E),17.395515183340894,361.8390475130194,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,high,4,subcooler_out,R1233zd(E),17.395515183340894,340.1669864849775,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,high,5,motive_in,R1233zd(E),17.395515183340894,335.715384846428,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,high,6,nozzle_out,R1233zd(E),3.3205893514902813,332.46509494708613,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,high,7,mixing,R1233zd(E),3.3205893514902813,375.1954180831004,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,high,8,ejector_out,R1233zd(E),3.411298824282316,375.8407878821178,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,high,9,separator_vapour,R1233zd(E),3.4112988242822753,440.39863113483585,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,high,10,separator_liquid,R1233zd(E),3.4112988242822753,265.83739777879816,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,high,11,evaporator_in,R1233zd(E),3.3205893514902813,265.8327410905816,59.17597036837312,2.3448743100372593
+Both stages: ejector + IHX + liquid-stream expander,high,12,evaporator_out,R1233zd(E),3.3205893514902813,444.2125013842116,59.17597036837312,2.3448743100372593

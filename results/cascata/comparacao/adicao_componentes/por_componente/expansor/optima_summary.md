@@ -16,11 +16,65 @@ Expansor: eficiência isentrópica = 0.5; fração útil da potência de eixo = 
 
 | Estágio de baixa | Estágio de alta | SC alta | COP máximo | Tcond,baixa* [°C] | Tevap,alta* [°C] | Potência líquida [kW] | Ganho entre ótimos [%] |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Flash tank + dois expansores | Flash tank + dois expansores | Sim | 2.700 | 49.16 | 44.16 | 62.96 | 16.74 |
+| Convencional | Flash tank + dois expansores | Sim | 2.657 | 38.05 | 33.05 | 63.97 | 14.90 |
+| Flash tank + expansor antes | Flash tank + expansor antes | Sim | 2.656 | 50.25 | 45.25 | 64.00 | 14.84 |
+| Flash tank + expansor depois | Flash tank + expansor depois | Sim | 2.644 | 50.00 | 45.00 | 64.29 | 14.33 |
+| Economizador + dois expansores | Economizador + dois expansores | Sim | 2.634 | 50.85 | 45.85 | 64.54 | 13.88 |
+| Economizador + expansor principal | Economizador + expansor principal | Sim | 2.625 | 51.45 | 46.45 | 64.77 | 13.48 |
+| Flash tank + dois expansores | Flash tank + dois expansores | Não | 2.615 | 53.93 | 48.93 | 65.00 | 22.52 |
+| Convencional | Flash tank + expansor antes | Sim | 2.615 | 40.36 | 35.36 | 65.02 | 13.05 |
+| Convencional | Flash tank + expansor depois | Sim | 2.604 | 40.91 | 35.91 | 65.28 | 12.60 |
+| Convencional | Economizador + dois expansores | Sim | 2.594 | 41.41 | 36.41 | 65.53 | 12.17 |
+| Expansor | Flash tank | Sim | 2.583 | 48.84 | 43.84 | 65.81 | 11.69 |
+| Convencional | Economizador + expansor principal | Sim | 2.583 | 42.33 | 37.33 | 65.81 | 11.69 |
+| Flash tank + expansor antes | Flash tank + expansor antes | Não | 2.562 | 54.87 | 49.87 | 66.36 | 20.01 |
+| Convencional | Flash tank + dois expansores | Não | 2.560 | 41.59 | 36.59 | 66.39 | 19.95 |
+| Flash tank + expansor depois | Flash tank + expansor depois | Não | 2.547 | 55.30 | 50.30 | 66.74 | 19.32 |
+| Economizador + expansor na injeção | Economizador + expansor na injeção | Sim | 2.544 | 50.89 | 45.89 | 66.83 | 9.98 |
+| Expansor | Economizador | Sim | 2.542 | 51.24 | 46.24 | 66.89 | 9.89 |
+| Economizador + dois expansores | Economizador + dois expansores | Não | 2.533 | 55.89 | 50.89 | 67.12 | 18.67 |
+| Convencional | Economizador + expansor na injeção | Sim | 2.521 | 44.57 | 39.57 | 67.44 | 8.99 |
+| Economizador + expansor principal | Economizador + expansor principal | Não | 2.518 | 56.76 | 51.76 | 67.51 | 17.97 |
+| Convencional | Flash tank + expansor antes | Não | 2.509 | 43.92 | 38.92 | 67.74 | 17.56 |
+| Flash tank | Expansor | Sim | 2.497 | 61.87 | 56.87 | 68.08 | 7.97 |
+| Convencional | Flash tank + expansor depois | Não | 2.494 | 45.19 | 40.19 | 68.16 | 16.85 |
 | Expansor | Expansor | Sim | 2.485 | 59.56 | 54.56 | 68.42 | 7.42 |
+| Convencional | Economizador + dois expansores | Não | 2.482 | 45.24 | 40.24 | 68.49 | 16.28 |
+| Economizador | Expansor | Sim | 2.478 | 60.79 | 55.79 | 68.62 | 7.12 |
+| Expansor | Flash tank | Não | 2.469 | 53.38 | 48.38 | 68.86 | 15.65 |
+| Flash tank + dois expansores | Convencional | Sim | 2.464 | 70.45 | 65.45 | 68.98 | 6.55 |
+| Convencional | Economizador + expansor principal | Não | 2.464 | 46.64 | 41.64 | 68.99 | 15.44 |
+| Flash tank + expansor antes | Convencional | Sim | 2.441 | 68.95 | 63.95 | 69.65 | 5.53 |
+| Economizador + dois expansores | Convencional | Sim | 2.435 | 69.17 | 64.17 | 69.82 | 5.27 |
+| Ejetor + IHX | Expansor | Sim | 2.434 | 55.89 | 50.89 | 69.84 | 5.25 |
+| Flash tank + expansor depois | Convencional | Sim | 2.433 | 68.54 | 63.54 | 69.87 | 5.20 |
+| Economizador + expansor na injeção | Economizador + expansor na injeção | Não | 2.432 | 55.81 | 50.81 | 69.90 | 13.93 |
+| Economizador + expansor principal | Convencional | Sim | 2.428 | 68.43 | 63.43 | 70.00 | 5.00 |
 | Convencional | Expansor | Sim | 2.425 | 55.14 | 50.14 | 70.09 | 4.86 |
+| Expansor | Economizador | Não | 2.419 | 55.77 | 50.77 | 70.28 | 13.33 |
+| Convencional | Economizador + expansor na injeção | Não | 2.401 | 48.37 | 43.37 | 70.81 | 12.48 |
+| Expansor | Ejetor + IHX | Sim | 2.400 | 62.95 | 57.95 | 70.82 | 3.78 |
+| Economizador + expansor na injeção | Convencional | Sim | 2.388 | 66.52 | 61.52 | 71.20 | 3.23 |
 | Expansor | Convencional | Sim | 2.381 | 63.96 | 58.96 | 71.39 | 2.96 |
+| Flash tank | Expansor | Não | 2.365 | 66.48 | 61.48 | 71.87 | 10.81 |
 | Expansor | Expansor | Não | 2.347 | 63.87 | 58.87 | 72.45 | 9.93 |
+| Economizador | Expansor | Não | 2.345 | 65.58 | 60.58 | 72.49 | 9.87 |
+| Ejetor + IHX + expansor no líquido | Ejetor + IHX + expansor no líquido | Sim | 2.345 | 59.18 | 54.18 | 72.50 | 1.38 |
+| Convencional | Ejetor + IHX + expansor no líquido | Sim | 2.335 | 58.35 | 53.35 | 72.82 | 0.94 |
+| Ejetor + IHX + expansor no líquido | Convencional | Sim | 2.324 | 60.25 | 55.25 | 73.16 | 0.47 |
 | Convencional | Convencional | Sim | 2.313 | 59.44 | 54.44 | 73.50 | 0.00 |
+| Flash tank + dois expansores | Convencional | Não | 2.296 | 71.05 | 66.05 | 74.05 | 7.55 |
+| Ejetor + IHX | Expansor | Não | 2.291 | 60.18 | 55.18 | 74.19 | 7.35 |
 | Convencional | Expansor | Não | 2.281 | 59.40 | 54.40 | 74.52 | 6.87 |
+| Flash tank + expansor antes | Convencional | Não | 2.275 | 71.05 | 66.05 | 74.74 | 6.56 |
+| Economizador + dois expansores | Convencional | Não | 2.270 | 71.05 | 66.05 | 74.89 | 6.35 |
+| Flash tank + expansor depois | Convencional | Não | 2.268 | 71.05 | 66.05 | 74.97 | 6.24 |
+| Economizador + expansor principal | Convencional | Não | 2.264 | 71.05 | 66.05 | 75.10 | 6.05 |
+| Expansor | Ejetor + IHX | Não | 2.235 | 67.61 | 62.61 | 76.06 | 4.71 |
+| Economizador + expansor na injeção | Convencional | Não | 2.225 | 71.05 | 66.05 | 76.40 | 4.24 |
 | Expansor | Convencional | Não | 2.209 | 68.69 | 63.69 | 76.97 | 3.47 |
+| Ejetor + IHX + expansor no líquido | Ejetor + IHX + expansor no líquido | Não | 2.175 | 64.04 | 59.04 | 78.15 | 1.91 |
+| Convencional | Ejetor + IHX + expansor no líquido | Não | 2.164 | 63.21 | 58.21 | 78.57 | 1.36 |
+| Ejetor + IHX + expansor no líquido | Convencional | Não | 2.147 | 65.27 | 60.27 | 79.19 | 0.57 |
 | Convencional | Convencional | Não | 2.135 | 64.45 | 59.45 | 79.64 | 0.00 |

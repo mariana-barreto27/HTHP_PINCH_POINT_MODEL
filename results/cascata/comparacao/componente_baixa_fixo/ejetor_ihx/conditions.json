@@ -68,8 +68,8 @@
     "injection_coordinate_passes": 3,
     "_evaluating_injection": false
   },
-  "points": 41,
-  "solver_signature": "2f8d34300d0671766059281eaf183ae6b0fbca6cfe28c604ff3940f5c55d06f1",
+  "points": 17,
+  "solver_signature": "2970432fabd5c3072943bd34102d12c1b996fff0ae6da33beba70ef3af22ab61",
   "cases": [
     {
       "configuration": "Low-stage ejector + IHX",
@@ -90,6 +90,11 @@
       "configuration": "Low-stage ejector + IHX / high-stage economizer",
       "low": "ejector",
       "high": "economizer"
+    },
+    {
+      "configuration": "Low-stage ejector + IHX / high-stage expander",
+      "low": "ejector",
+      "high": "expander"
     }
   ],
   "reference": "Low-stage ejector + IHX",

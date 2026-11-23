@@ -1,38 +1,59 @@
-"""Compact reports of already optimized cases; never run a thermodynamic solver."""
+"""Tabelas e relatórios dos pontos ótimos já calculados."""
 
 import math
 import json
+import textwrap
 from dataclasses import asdict, replace
 from pathlib import Path
 
 from hthp.analyses import save_rows
-from hthp.configurations import ARCHITECTURES
+from hthp.configurations import ARCHITECTURES, INTRASTAGE_TECHNOLOGIES, technology_components
 
 
 STAGE_NAMES = {
-    "simple": "Convencional", "flash_tank": "Flash tank",
-    "economizer": "Economizador", "ejector": "Ejetor + IHX",
+    "simple": "Convencional",
+    "flash_tank": "Flash tank",
+    "economizer": "Economizador",
+    "ejector": "Ejetor + IHX",
     "expander": "Expansor",
+    "flash_expander_before": "Flash tank + expansor antes",
+    "flash_expander_after": "Flash tank + expansor depois",
+    "flash_expander_both": "Flash tank + dois expansores",
+    "economizer_expander_main": "Economizador + expansor principal",
+    "economizer_expander_injection": "Economizador + expansor na injeção",
+    "economizer_expander_both": "Economizador + dois expansores",
+    "ejector_expander": "Ejetor + IHX + expansor no líquido",
+    "flash_ejector": "Flash tank + ejetor + IHX",
+    "economizer_ejector": "Economizador + ejetor + IHX",
 }
 
 
 def save_combined_optima_report(summaries, p, output, signature):
-    """Keep the full 38-case table separate from any temperature-sweep cache."""
+    """Reúne os ótimos com e sem subcooler, separados dos pontos das curvas."""
     expected = {(label, enabled) for label, _, _ in ARCHITECTURES for enabled in (False, True)}
     summary = build_optimum_summary(summaries, p)
     actual = {(row["base_configuration"], row["with_high_stage_subcooler"]) for row in summary}
     if actual != expected:
-        raise ValueError("A tabela completa requer as 19 arquiteturas com e sem subcooler (38 casos).")
+        raise ValueError(f"A tabela completa requer as {len(ARCHITECTURES)} arquiteturas "
+                         f"com e sem subcooler ({len(expected)} casos).")
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     ordered = sorted(summaries, key=lambda row: (row["status"] != "valid", -float(row.get("COP") or 0)))
     save_rows(ordered, output / "optima.csv")
-    metadata = dict(analysis="pontos_otimos", solver_signature=signature,
-                    parameters_by_subcooler={str(enabled): asdict(replace(p, use_subcooler=enabled))
-                                             for enabled in (False, True)},
-                    cases=[dict(configuration=label, low=low, high=high) for label, low, high in ARCHITECTURES],
-                    case_count=len(summary), optimization="scipy.optimize.minimize_scalar (bounded)",
-                    gain_comparison="each case at its own optimum; conventional with matching subcooler setting")
+    parameters_by_subcooler = {}
+    for enabled in (False, True):
+        parameters_by_subcooler[str(enabled)] = asdict(replace(p, use_subcooler=enabled))
+
+    metadata = {
+        "analysis": "pontos_otimos",
+        "solver_signature": signature,
+        "parameters_by_subcooler": parameters_by_subcooler,
+        "cases": [dict(configuration=label, low=low, high=high)
+                  for label, low, high in ARCHITECTURES],
+        "case_count": len(summary),
+        "optimization": "scipy.optimize.minimize_scalar (bounded)",
+        "gain_comparison": "each case at its own optimum; conventional with matching subcooler setting",
+    }
     (output / "conditions.json").write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
     return save_optimum_report(ordered, p, output, render=True)
 
@@ -58,11 +79,7 @@ def _flag(value, default=False):
 
 
 def build_optimum_summary(summaries, p, reference="Conventional cascade"):
-    """Compare each case's own optimum with the same-SC conventional optimum.
-
-    Missing metrics remain unavailable. Invalid configurations stay in the
-    table, with their reason. Explicit boundary flags are copied, not inferred.
-    """
+    """Compara os ótimos com a referência de mesmo subcooler."""
     registry = {label: (low, high) for label, low, high in ARCHITECTURES}
     result = []
     seen = set()
@@ -99,14 +116,15 @@ def build_optimum_summary(summaries, p, reference="Conventional cascade"):
             if key in raw:
                 item[key] = raw[key]
         result.append(item)
-    baselines = {
-        row["with_high_stage_subcooler"]: row["COP_max"] for row in result
-        if row["base_configuration"] == reference and row["status"] == "valid"
-    }
+    reference_cops = {}
     for row in result:
-        baseline = baselines.get(row["with_high_stage_subcooler"])
-        if row["status"] == "valid" and baseline is not None:
-            row["COP_gain_at_own_optimum_percent"] = 100 * (row["COP_max"] / baseline - 1)
+        if row["base_configuration"] == reference and row["status"] == "valid":
+            reference_cops[row["with_high_stage_subcooler"]] = row["COP_max"]
+
+    for row in result:
+        reference_cop = reference_cops.get(row["with_high_stage_subcooler"])
+        if row["status"] == "valid" and reference_cop is not None:
+            row["COP_gain_at_own_optimum_percent"] = 100 * (row["COP_max"] / reference_cop - 1)
     return sorted(result, key=lambda row: (
         row["status"] != "valid", -(row["COP_max"] or 0), row["configuration"]))
 
@@ -124,20 +142,24 @@ def _latex(text):
 
 
 def render_optimum_table(rows, p, output):
-    """Readable scientific table, split by subcooler setting when both exist."""
     import matplotlib.pyplot as plt
     from hthp.plots.style import COLORS, save_figure
 
     settings = sorted({row["with_high_stage_subcooler"] for row in rows})
     for enabled in settings:
         subset = [row for row in rows if row["with_high_stage_subcooler"] == enabled]
-        fig = plt.figure(figsize=(8.7, max(3.5, 1.8 + 0.25 * len(subset))), layout="none")
+        def wrapped(value):
+            return textwrap.fill(value, width=22, break_long_words=False)
+        row_lines = [max(wrapped(row[key]).count("\n")+1 for key in ("low_stage", "high_stage"))
+                     for row in subset]
+        height = max(3.5, 1.8 + 0.25 * sum(row_lines))
+        fig = plt.figure(figsize=(8.7, height), layout="none")
         ax = fig.add_axes((0.035, 0.14, 0.93, 0.72))
         ax.axis("off")
         headers = ["Estágio de baixa", "Estágio de alta", r"$COP_{\max}$",
                    "$T_{\\mathrm{cond,l}}^*$\n[°C]", "$T_{\\mathrm{evap,h}}^*$\n[°C]",
                    "$\\dot W_{\\mathrm{liq}}$\n[kW]", "Ganho*\n[%]"]
-        cells = [[row["low_stage"], row["high_stage"], _formatted(row["COP_max"], 3),
+        cells = [[wrapped(row["low_stage"]), wrapped(row["high_stage"]), _formatted(row["COP_max"], 3),
                   _formatted(row["low_condensation_optimum_C"]),
                   _formatted(row["high_evaporation_optimum_C"]),
                   _formatted(row["W_net_shaft_kW"]),
@@ -164,7 +186,8 @@ def render_optimum_table(rows, p, output):
         fig.text(0.5, 0.92, f"{p.Q_target / 1000:g} kW totais | fonte a {p.T_source_in:g} °C | {setting}",
                  ha="center", fontsize=10)
         note = "* Ganho entre ótimos próprios, relativo ao convencional com o mesmo subcooler."
-        if any("expander" in (row["low_component"], row["high_component"]) for row in subset):
+        if any("expander" in technology_components(t) for row in subset
+               for t in (row["low_component"], row["high_component"])):
             note += (f"\nExpansor: ηis = {p.expander_isentropic_efficiency:g}; "
                      f"fração de eixo aproveitada = {p.expander_recovery_efficiency:g} (hipóteses).")
         fig.text(0.035, 0.025, note, fontsize=8, va="bottom")
@@ -175,10 +198,7 @@ def render_optimum_table(rows, p, output):
 
 
 def save_optimum_report(summaries, p, output, reference="Conventional cascade", render=False):
-    """Write compact CSV, readable Markdown, and a copy-ready LaTeX tabular.
-
-    The existing detailed ``optima.csv`` is not changed. Return the summary rows.
-    """
+    """Salva o resumo em CSV, Markdown e LaTeX, sem alterar optima.csv."""
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     rows = build_optimum_summary(summaries, p, reference)
@@ -206,7 +226,8 @@ def save_optimum_report(summaries, p, output, reference="Conventional cascade", 
         enabled = rows[0]["with_high_stage_subcooler"] if rows else p.use_subcooler
         notes.append("Subcooler externo somente no estágio de alta." if enabled
                      else "Sem subcooler externo em ambos os estágios.")
-    if any("expander" in (row["low_component"], row["high_component"]) for row in rows):
+    if any("expander" in technology_components(t) for row in rows
+           for t in (row["low_component"], row["high_component"])):
         notes.append(
             f"Expansor: eficiência isentrópica = {p.expander_isentropic_efficiency:g}; "
             f"fração útil da potência de eixo = {p.expander_recovery_efficiency:g}. "
@@ -227,9 +248,12 @@ def save_optimum_report(summaries, p, output, reference="Conventional cascade", 
                   _formatted(row["W_net_shaft_kW"]),
                   _formatted(row["COP_gain_at_own_optimum_percent"])]
         table.append(cells)
-    markdown = ["# Pontos ótimos por configuração", "", *[note + "\n" for note in notes],
-                "| " + " | ".join(headers) + " |",
-                "| " + " | ".join(["---", "---"] + (["---"] if mixed_sc else []) + ["---:"] * 5) + " |"]
+    markdown = ["# Pontos ótimos por configuração", ""]
+    markdown.extend(note + "\n" for note in notes)
+    markdown.append("| " + " | ".join(headers) + " |")
+    stage_columns = 3 if mixed_sc else 2
+    alignment = ["---"] * stage_columns + ["---:"] * 5
+    markdown.append("| " + " | ".join(alignment) + " |")
     markdown += ["| " + " | ".join(cells) + " |" for cells in table]
     invalid = [row for row in rows if row["status"] != "valid"]
     if invalid:
@@ -243,10 +267,13 @@ def save_optimum_report(summaries, p, output, reference="Conventional cascade", 
                     r"\shortstack{$\Delta COP_{\mathrm{opt}}$\\{[\%]}}"]
     latex = ["% Requer \\usepackage{booktabs}; bloco tabular, não documento completo."]
     latex += ["% " + note for note in notes]
+    column_format = "llcrrrrr" if mixed_sc else "llrrrrr"
     latex += [r"{\small\setlength{\tabcolsep}{4pt}\renewcommand{\arraystretch}{1.12}",
-              r"\begin{tabular}{ll" + ("c" if mixed_sc else "") + "rrrrr}",
+              r"\begin{tabular}{" + column_format + "}",
               r"\toprule", " & ".join(tex_headers) + r" \\", r"\midrule"]
-    latex += [" & ".join(_latex(cell) if cell != "—" else "--" for cell in cells) + r" \\" for cells in table]
+    for cells in table:
+        tex_cells = [_latex(cell) if cell != "—" else "--" for cell in cells]
+        latex.append(" & ".join(tex_cells) + r" \\")
     latex += [r"\bottomrule", r"\end{tabular}", "}"]
     latex += ["% Caso sem ótimo válido: " + row["configuration"] + ": " + (row["reason"] or "motivo não informado")
               for row in invalid]

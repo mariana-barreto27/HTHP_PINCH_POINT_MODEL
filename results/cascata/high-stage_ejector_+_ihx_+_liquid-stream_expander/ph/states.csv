@@ -1,0 +1,17 @@
+configuration,stage,number,solver_state,fluid,pressure_bar,enthalpy_kJ_kg,low_condensation_C,COP
+High-stage ejector + IHX + liquid-stream expander,low,1,1,R32,14.729166309396284,524.160661124843,58.35407506746075,2.334625150890789
+High-stage ejector + IHX + liquid-stream expander,low,2,2,R32,37.93158023815487,574.1930492976065,58.35407506746075,2.334625150890789
+High-stage ejector + IHX + liquid-stream expander,low,3,3,R32,37.93158023815487,317.62495784516534,58.35407506746075,2.334625150890789
+High-stage ejector + IHX + liquid-stream expander,low,4,4,R32,14.729166309396284,317.62495784516534,58.35407506746075,2.334625150890789
+High-stage ejector + IHX + liquid-stream expander,high,1,suction,R1233zd(E),3.333871485353487,444.3067730251773,58.35407506746075,2.334625150890789
+High-stage ejector + IHX + liquid-stream expander,high,2,discharge,R1233zd(E),17.395515183340894,486.8259949687863,58.35407506746075,2.334625150890789
+High-stage ejector + IHX + liquid-stream expander,high,3,condenser_out,R1233zd(E),17.395515183340894,361.8390475130194,58.35407506746075,2.334625150890789
+High-stage ejector + IHX + liquid-stream expander,high,4,subcooler_out,R1233zd(E),17.395515183340894,340.14195041705244,58.35407506746075,2.334625150890789
+High-stage ejector + IHX + liquid-stream expander,high,5,motive_in,R1233zd(E),17.395515183340894,335.70190082380503,58.35407506746075,2.334625150890789
+High-stage ejector + IHX + liquid-stream expander,high,6,nozzle_out,R1233zd(E),3.242622215494513,332.3676021319912,58.35407506746075,2.334625150890789
+High-stage ejector + IHX + liquid-stream expander,high,7,mixing,R1233zd(E),3.242622215494513,374.77217063741904,58.35407506746075,2.334625150890789
+High-stage ejector + IHX + liquid-stream expander,high,8,ejector_out,R1233zd(E),3.3338714853534244,375.4378738423543,58.35407506746075,2.334625150890789
+High-stage ejector + IHX + liquid-stream expander,high,9,separator_vapour,R1233zd(E),3.333871485353487,439.86672343192987,58.35407506746075,2.334625150890789
+High-stage ejector + IHX + liquid-stream expander,high,10,separator_liquid,R1233zd(E),3.333871485353487,264.83262813003995,58.35407506746075,2.334625150890789
+High-stage ejector + IHX + liquid-stream expander,high,11,evaporator_in,R1233zd(E),3.242622215494513,264.8279141639922,58.35407506746075,2.334625150890789
+High-stage ejector + IHX + liquid-stream expander,high,12,evaporator_out,R1233zd(E),3.242622215494513,443.6527665081649,58.35407506746075,2.334625150890789

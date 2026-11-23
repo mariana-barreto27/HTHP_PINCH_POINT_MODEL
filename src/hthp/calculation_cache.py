@@ -1,4 +1,4 @@
-"""Exact, resumable results using atomic SQLite and typed JSON, never pickle."""
+"""Armazenamento de cálculos em SQLite e JSON, com tipos e precisão preservados."""
 
 from collections import OrderedDict
 from dataclasses import asdict, fields, is_dataclass
@@ -18,7 +18,6 @@ SCHEMA_VERSION = 1
 
 
 def _pack(value, *, canonical=False):
-    """Preserve exact floats, mapping keys, array dtype and state objects."""
     if value is None or type(value) in (bool, int, str):
         return value
     if type(value) is float:
@@ -90,7 +89,7 @@ def _default_signature():
     from hthp.comparisons import solver_signature
 
     digest = hashlib.sha256(solver_signature().encode("ascii"))
-    # Flattened rows depend on record(), not only the solver equations.
+    # As linhas salvas também dependem de record(), em analyses.py.
     digest.update(Path(__file__).with_name("analyses.py").read_bytes())
     return digest.hexdigest()
 
@@ -106,14 +105,7 @@ def _dependency_versions():
 
 
 class CalculationCache:
-    """Reuse identically configured calculations, including across runs.
-
-    Parameters and coordinates are never rounded. ``enabled=False`` disables
-    reads and writes. To recalculate but retain fresh results, skip ``get`` and
-    continue calling ``set``. Missing or corrupt entries return ``default``;
-    unsupported application types remain programming errors. Each point is
-    committed independently. In-memory entries are bounded and defensive.
-    """
+    """Guarda cada ponto sem arredondar. Se faltar ou estiver corrompido, retorna o valor padrão."""
 
     def __init__(self, path, signature=None, enabled=True, max_memory_entries=1024,
                  dependency_versions=None):

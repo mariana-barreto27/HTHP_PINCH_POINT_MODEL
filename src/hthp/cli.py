@@ -1,4 +1,4 @@
-"""Command-line entry point for one heat-pump case at a time."""
+"""Comandos para escolher o ciclo e executar as análises."""
 
 import argparse
 from dataclasses import asdict, replace
@@ -16,7 +16,8 @@ import numpy as np
 
 from hthp import model
 from hthp.analyses import evaluate, ph_analysis, plot_curves, record, save_rows
-from hthp.configurations import ARCHITECTURES, BASE_ARCHITECTURES, ComponentParams
+from hthp.configurations import (ARCHITECTURES, BASE_ARCHITECTURES, ComponentParams,
+                                 has_injection, technology_components)
 from hthp.comparisons import (comparison_views, view_cases, relative_cop_groups,
                               comparison_metadata, load_comparison_data, solver_signature)
 from hthp.plots.style import MM, add_minor_grid, save_figure
@@ -26,12 +27,30 @@ from hthp.calculation_cache import CalculationCache
 
 
 TECHNOLOGY = {
-    "simples": "simple", "flash": "flash_tank", "economizador": "economizer",
+    "simples": "simple",
+    "flash": "flash_tank",
+    "economizador": "economizer",
     "ejetor": "ejector",
-    "expansor": "expander", "turbina": "expander",
+    "expansor": "expander",
+    "turbina": "expander",
+    "flash-expansor": "flash_expander_after",
+    "flash-expansor-antes": "flash_expander_before",
+    "flash-expansor-depois": "flash_expander_after",
+    "flash-dois-expansores": "flash_expander_both",
+    "economizador-expansor": "economizer_expander_main",
+    "economizador-expansor-injecao": "economizer_expander_injection",
+    "economizador-dois-expansores": "economizer_expander_both",
+    "ejetor-expansor": "ejector_expander",
+    "flash-ejetor": "flash_ejector",
+    "economizador-ejetor": "economizer_ejector",
 }
-LABEL = {"simple": "simple", "flash_tank": "flash_tank", "economizer": "economizer",
-         "ejector": "ejector_ihx", "expander": "expansor"}
+LABEL = {
+    "simple": "simple",
+    "flash_tank": "flash_tank",
+    "economizer": "economizer",
+    "ejector": "ejector_ihx",
+    "expander": "expansor",
+}
 
 
 def _unit_fraction(value):
@@ -84,7 +103,9 @@ def build_parser():
                         help="eficiência isentrópica do expansor [0–1]; 0 reproduz a válvula (padrão: 0.50, hipótese)")
     parser.add_argument("--recuperacao-expansor", type=_unit_fraction, default=1.0,
                         help="fração do trabalho do expansor aproveitada no eixo [0–1]; padrão 1: transmissão ideal")
-    parser.add_argument("--grupo", choices=("todos", "economizador", "flash", "ejetor", "mistas", "expansor", "turbina"),
+    parser.add_argument("--grupo", choices=("todos", "economizador", "flash", "ejetor", "mistas", "expansor", "turbina",
+                        "mesmo-ciclo", "flash-expansor", "economizador-expansor", "ejetor-expansor",
+                        "flash-ejetor", "economizador-ejetor"),
                         default="todos", help="grupo de configurações na análise comparacao")
     parser.add_argument("--replotar", action="store_true",
                         help="refaz a comparação com CSVs compatíveis, sem recalcular ciclos")
@@ -113,10 +134,15 @@ def selected_case(args):
         tech = TECHNOLOGY[args.componente]
         low = tech if args.estagio in ("baixa", "ambos") else "simple"
         high = tech if args.estagio in ("alta", "ambos") else "simple"
-    name = next((n for n, l, h in ARCHITECTURES if (l, h) == (low, high)), None)
+    name = None
+    for label, low_technology, high_technology in ARCHITECTURES:
+        if (low_technology, high_technology) == (low, high):
+            name = label
+            break
     if name is None:
-        raise ValueError("Combinação de componentes não cadastrada. O estudo inicial do expansor "
-                         "inclui baixa, alta ou ambos com o outro ciclo convencional, sem híbridos adicionais.")
+        raise ValueError("Par entre estágios não cadastrado. As combinações no mesmo circuito "
+                         "podem ser aplicadas na alta, na baixa ou igualmente em ambos; "
+                         "use --componente e --estagio. Consulte --help.")
     p = ComponentParams(
         Q_target=args.carga * 1000,
         T_source_in=args.fonte,
@@ -124,7 +150,7 @@ def selected_case(args):
         low_technology=low,
         high_technology=high,
         use_subcooler=args.subcooler,
-        optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)),
+        optimize_injection=any(has_injection(t) for t in (low, high)),
         **_expander_options(args),
     )
     if args.ciclo == "alta":
@@ -142,7 +168,6 @@ _CACHE_MISSING = object()
 
 
 def _calculation_cache(args):
-    """Share exact, versioned results across analyses and interrupted runs."""
     if not hasattr(args, "_calculation_cache"):
         args._calculation_cache = CalculationCache(
             ROOT / "results" / ".calculation_cache.sqlite3")
@@ -153,8 +178,7 @@ def _calculation_cache(args):
 
 def _cached_calculation(args, kind, p, coordinates, calculate):
     cache = _calculation_cache(args)
-    # A forced refresh bypasses previous campaigns, not results just calculated
-    # by point/curve/P-h in this campaign. Parameter keys are never label-only.
+    # --recalcular ignora o cache anterior, mas reaproveita o que acabou de calcular.
     fresh_key = hashlib.sha256(json.dumps(
         [kind, asdict(p), coordinates], sort_keys=True).encode("utf-8")).hexdigest()
     fresh = args._fresh_calculations
@@ -184,7 +208,6 @@ def _cached_evaluate(args, label, p, temperature, evaluator=None):
 
 
 def _sweep_rows(args, label, points, total, title, evaluator=None):
-    """Persist each completed point before advancing, with bounded progress output."""
     started = last_update = monotonic()
     initial_reused = getattr(args, "_reused_calculations", 0)
     interval = max(1, total // 10)
@@ -204,14 +227,18 @@ def _sweep_rows(args, label, points, total, title, evaluator=None):
 def run_point(label, p, args, output):
     if args.ciclo == "cascata":
         cycle, _ = _cached_optimum(args, p)
+        row = record(label, p, cycle)
     else:
         cycle = model.ciclo_alta(p)
-    row = record(label, p, cycle) if args.ciclo == "cascata" else {
-        "configuration": label, "status": "valid", "COP": cycle["COP"],
-        "Q_useful_kW": cycle["Q_total"] / 1000, "W_shaft_kW": cycle["W_total"] / 1000,
-        "high_evaporation_C": cycle["high"]["T_ev"],
-        "high_condensation_C": cycle["high"]["T_cd"],
-    }
+        row = {
+            "configuration": label,
+            "status": "valid",
+            "COP": cycle["COP"],
+            "Q_useful_kW": cycle["Q_total"] / 1000,
+            "W_shaft_kW": cycle["W_total"] / 1000,
+            "high_evaporation_C": cycle["high"]["T_ev"],
+            "high_condensation_C": cycle["high"]["T_cd"],
+        }
     output.mkdir(parents=True, exist_ok=True)
     save_rows([row], output / "result.csv")
     (output / "conditions.json").write_text(
@@ -232,11 +259,14 @@ def run_point(label, p, args, output):
                       f"razão de arraste {result['ejector_entrainment_ratio']:.4f}; "
                       f"IHX {result['Q_ihx']/1000:.2f} kW (interno)")
             if "expander_isentropic_efficiency" in result:
-                print(f"Expansor ({stage}): saída {result['P_ev']:.3f} bar; "
+                print(f"Expansor(es) ({stage}): "
                       f"potência gerada {result['W_expander']/1000:.3f} kW; "
                       f"aproveitada {result['W_recovered']/1000:.3f} kW")
     print(f"COP: {cycle['COP']:.4f}")
-    if args.ciclo == "cascata" and "expander" in (p.low_technology, p.high_technology):
+    if args.ciclo == "cascata" and (
+        "expander" in technology_components(p.low_technology)
+        or "expander" in technology_components(p.high_technology)
+    ):
         print(f"Potência bruta dos compressores: {row['W_compressor_shaft_kW']:.2f} kW")
         print(f"Potência líquida de entrada no eixo: {row['W_net_shaft_kW']:.2f} kW")
         print(f"Hipóteses: eficiência isentrópica {p.expander_isentropic_efficiency:g}; "
@@ -307,8 +337,7 @@ def run_map(label, p, args, output):
            ylabel="High-stage evaporation temperature [°C]",
            title=(f"Cascade COP — {label}\n"
                   f"{p.Q_target / 1000:g} kW | saturated water at "
-                  f"{p.T_sat_w_cond:g} °C | cascade pinch = "
-                  f"{p.DT_pinch_cascade:g} K | "
+                  f"{p.T_sat_w_cond:g} °C | "
                   f"{'with' if p.use_subcooler else 'without'} subcooler"))
     ax.set_xlim(float(sources.min()), float(sources.max()))
     ax.set_ylim(float(high_evaporations.min()), float(high_evaporations.max()))
@@ -390,7 +419,7 @@ def run_comparison(args, output):
         print(f"Gráficos e tabela: {destination}", flush=True)
     if args.grupo == "todos":
         _plot_discharge_comparisons(groups, p, output / "descarga_vs_convencional")
-        # Preserve the previous ten-case plots and their familiar filenames.
+        # Comparação das dez arquiteturas básicas.
         labels = {case[0] for case in BASE_ARCHITECTURES}
         legacy = [(label, rows) for label, rows in groups if label in labels]
         save_rows([row for row in summaries if row["configuration"] in labels], output / "optima.csv")
@@ -411,7 +440,7 @@ def run_comparison(args, output):
 
 
 def _plot_discharge_comparisons(groups, p, output):
-    """Compare each architecture with the conventional cascade on the same grid."""
+    """Compara cada arquitetura com a cascata convencional na mesma malha."""
     reference = "Conventional cascade"
     baseline = next(group for group in groups if group[0] == reference)
     selections = [("todas_configuracoes", groups)]
@@ -441,17 +470,17 @@ def _calculate_comparison_optima(args, p, cases):
     for index, (label, low, high) in enumerate(cases, 1):
         print(f"Ótimo {index}/{len(cases)}: {label}", flush=True)
         case = replace(p, low_technology=low, high_technology=high,
-                       optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)))
+                       optimize_injection=any(has_injection(t) for t in (low, high)))
         try:
             cycle, _ = _cached_optimum(args, case)
-            cached = record(label, case, cycle)
+            row = record(label, case, cycle)
         except ValueError as error:
-            cached = dict(configuration=label, status="invalid", reason=str(error))
-        summaries.append(cached)
-        if cached["status"] == "valid":
-            print(f"  COP ótimo {float(cached['COP']):.4f}", flush=True)
+            row = dict(configuration=label, status="invalid", reason=str(error))
+        summaries.append(row)
+        if row["status"] == "valid":
+            print(f"  COP ótimo {float(row['COP']):.4f}", flush=True)
         else:
-            print(f"  Sem ótimo viável: {cached['reason']}", flush=True)
+            print(f"  Sem ótimo viável: {row['reason']}", flush=True)
     return summaries
 
 
@@ -461,7 +490,7 @@ def _calculate_architecture_curves(args, p, cases):
     for index, (label, low, high) in enumerate(cases, 1):
         print(f"Curva {index}/{len(cases)}: {label}", flush=True)
         case = replace(p, low_technology=low, high_technology=high,
-                       optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)))
+                       optimize_injection=any(has_injection(t) for t in (low, high)))
         rows = _sweep_rows(args, label, ((case, float(t)) for t in temperatures),
                            len(temperatures), "Curva")
         groups.append((label, rows))
@@ -470,53 +499,69 @@ def _calculate_architecture_curves(args, p, cases):
 
 def _plot_architecture_curves(args, p, output, groups=None,
                               cop_title="Cascade COP — architecture comparison"):
-    """Make like-for-like curves for every cascade architecture.
-
-    The swept variable and x axis are the low-stage condensing temperature,
-    matching the comparison figure requested for the cascade analyses.
-    """
+    """Compara as arquiteturas variando a temperatura de condensação da baixa."""
     output.mkdir(parents=True, exist_ok=True)
     if groups is None:
         groups = _calculate_architecture_curves(args, p, BASE_ARCHITECTURES)
-    combined_rows = [row for _, rows in groups for row in rows]
-    save_rows(combined_rows, output / "architecture_temperature_sweeps.csv")
+    curve_rows = []
+    for _, rows in groups:
+        curve_rows.extend(rows)
+    save_rows(curve_rows, output / "architecture_temperature_sweeps.csv")
+
     x_label = "Low-stage condensation temperature [°C]"
-    plot_curves(groups, "low_condensation_C", "COP", x_label, "Overall COP [-]",
-                cop_title,
-                output / "cop_vs_low_stage_condensation", p)
     has_expander = any("expander" in label.lower() for label, _ in groups)
-    plot_curves(groups, "low_condensation_C", "W_shaft_kW", x_label,
-                "Net shaft input [kW]" if has_expander else "Compressor shaft power [kW]",
-                "Cascade net power — architecture comparison" if has_expander
-                else "Cascade compressor power — architecture comparison",
-                output / "power_vs_low_stage_condensation", p)
+    power_label = "Net shaft input [kW]" if has_expander else "Compressor shaft power [kW]"
+    power_title = ("Cascade net power — architecture comparison" if has_expander
+                   else "Cascade compressor power — architecture comparison")
+
+    # Cada linha define: coluna dos dados, eixo y, título e nome do arquivo.
+    plots = [
+        ("COP", "Overall COP [-]", cop_title, "cop_vs_low_stage_condensation"),
+        ("W_shaft_kW", power_label, power_title, "power_vs_low_stage_condensation"),
+    ]
     if has_expander:
-        for key, ylabel, title, filename in (
+        plots.extend([
             ("W_compressor_shaft_kW", "Gross compressor shaft power [kW]",
              "Cascade gross compressor power", "gross_compressor_power_vs_low_stage_condensation"),
             ("W_expander_shaft_kW", "Expander shaft output [kW]",
              "Cascade expansion work output", "expander_output_vs_low_stage_condensation"),
             ("W_recovered_kW", "Useful recovered shaft power [kW]",
              "Cascade useful expansion work recovery", "recovered_power_vs_low_stage_condensation"),
+        ])
+    plots.extend([
+        ("low_discharge_C", "Low-stage discharge temperature [°C]",
+         "Low-stage discharge temperature — architecture comparison",
+         "low_stage_discharge_vs_low_stage_condensation"),
+        ("high_discharge_C", "High-stage discharge temperature [°C]",
+         "High-stage discharge temperature — architecture comparison",
+         "high_stage_discharge_vs_low_stage_condensation"),
+        ("low_minimum_efficiency", "Minimum compressor isentropic efficiency [-]",
+         "Low-stage compressor efficiency — architecture comparison",
+         "low_stage_efficiency_vs_low_stage_condensation"),
+        ("high_minimum_efficiency", "Minimum compressor isentropic efficiency [-]",
+         "High-stage compressor efficiency — architecture comparison",
+         "high_stage_efficiency_vs_low_stage_condensation"),
+    ])
+    for column, ylabel, title, filename in plots:
+        plot_curves(groups, "low_condensation_C", column, x_label, ylabel,
+                    title, output / filename, p)
+
+    selected_labels = {name for name, _ in groups}
+    for label, low, high in ARCHITECTURES:
+        if label in selected_labels and (has_injection(low) or has_injection(high)):
+            break
+    else:
+        return
+
+    for stage in ("low", "high"):
+        for metric, ylabel, title in (
+            ("injection_fraction", "Injected mass fraction [-]", "injection fraction"),
+            ("injection_pressure_bar", "Injection pressure [bar]", "injection pressure"),
+            ("evaporator_mass_flow_kg_s", "Evaporator refrigerant flow [kg/s]", "evaporator refrigerant flow"),
         ):
-            plot_curves(groups, "low_condensation_C", key, x_label, ylabel,
-                        title, output / filename, p)
-    plot_curves(groups, "low_condensation_C", "low_discharge_C", x_label,
-                "Low-stage discharge temperature [°C]",
-                "Low-stage discharge temperature — architecture comparison",
-                output / "low_stage_discharge_vs_low_stage_condensation", p)
-    plot_curves(groups, "low_condensation_C", "high_discharge_C", x_label,
-                "High-stage discharge temperature [°C]",
-                "High-stage discharge temperature — architecture comparison",
-                output / "high_stage_discharge_vs_low_stage_condensation", p)
-    plot_curves(groups, "low_condensation_C", "low_minimum_efficiency", x_label,
-                "Minimum compressor isentropic efficiency [-]",
-                "Low-stage compressor efficiency — architecture comparison",
-                output / "low_stage_efficiency_vs_low_stage_condensation", p)
-    plot_curves(groups, "low_condensation_C", "high_minimum_efficiency", x_label,
-                "Minimum compressor isentropic efficiency [-]",
-                "High-stage compressor efficiency — architecture comparison",
-                output / "high_stage_efficiency_vs_low_stage_condensation", p)
+            plot_curves(groups, "low_condensation_C", f"{stage}_{metric}", x_label,
+                        ylabel, f"{stage.capitalize()}-stage {title}",
+                        output / f"{stage}_{metric}_vs_low_stage_condensation", p)
 
 
 def run_selected_analysis(label, p, args):
@@ -549,7 +594,6 @@ def run_selected_analysis(label, p, args):
 
 
 def run_all_architectures(args):
-    # Copies made for the two subcooler variants share the same versioned cache.
     _calculation_cache(args)
     base = ComponentParams(
         Q_target=args.carga * 1000,
@@ -562,7 +606,7 @@ def run_all_architectures(args):
     for label, low, high in ARCHITECTURES:
         print(f"\n=== {label} ===", flush=True)
         p = replace(base, low_technology=low, high_technology=high,
-                    optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)))
+                    optimize_injection=any(has_injection(t) for t in (low, high)))
         for analysis in analyses:
             args.analise = analysis
             print(f"Análise: {analysis}", flush=True)
@@ -570,7 +614,6 @@ def run_all_architectures(args):
 
     args.analise = "comparacao"
     run_comparison(args, ROOT / "results" / "cascata" / "comparacao")
-    # Add both subcooler versions, but preserve the user's original option.
     from hthp.component_comparison import run_component_comparison
     run_component_comparison(args, ROOT / "results" / "cascata" / "comparacao" / "adicao_componentes")
     args.analise = "all"

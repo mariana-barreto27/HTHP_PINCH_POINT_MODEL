@@ -16,45 +16,60 @@ from hthp.comparisons import (comparison_views, view_cases, relative_cop_groups,
                               comparison_metadata, load_comparison_data, solver_signature)
 from hthp.configurations import (ARCHITECTURES, BASE_ARCHITECTURES,
                                  MIXED_ARCHITECTURES, EXPANDER_ARCHITECTURES,
-                                 ComponentParams)
+                                 EXPANDER_HYBRID_ARCHITECTURES,
+                                 ComponentParams, LEGACY_ARCHITECTURES,
+                                 INTRASTAGE_ARCHITECTURES, technology_components)
 from hthp.plots.style import COLORS, DASHES, MARKERS
 
 
 class ComparisonTests(unittest.TestCase):
-    def test_registry_preserves_old_product_and_appends_three_expander_placements(self):
+    def test_registry_preserves_old_product_and_appends_only_requested_expander_hybrids(self):
         technologies = ("simple", "flash_tank", "economizer", "ejector")
         legacy = BASE_ARCHITECTURES + MIXED_ARCHITECTURES
         self.assertEqual(ARCHITECTURES[:16], legacy)
         self.assertEqual({case[1:] for case in legacy}, set(itertools.product(technologies, repeat=2)))
         self.assertEqual(ARCHITECTURES[:10], BASE_ARCHITECTURES)
         self.assertEqual(len(MIXED_ARCHITECTURES), 6)
-        self.assertEqual(ARCHITECTURES[16:], EXPANDER_ARCHITECTURES)
+        self.assertEqual(ARCHITECTURES[16:19], EXPANDER_ARCHITECTURES)
+        self.assertEqual(ARCHITECTURES[19:25], EXPANDER_HYBRID_ARCHITECTURES)
+        self.assertEqual(ARCHITECTURES[25:], INTRASTAGE_ARCHITECTURES)
         self.assertEqual({case[1:] for case in EXPANDER_ARCHITECTURES},
                          {("simple", "expander"), ("expander", "simple"),
                           ("expander", "expander")})
-        self.assertEqual(len({case[0] for case in ARCHITECTURES}), 19)
-        self.assertEqual((len(COLORS), len(DASHES), len(MARKERS)), (19, 19, 19))
+        self.assertEqual({case[1:] for case in EXPANDER_HYBRID_ARCHITECTURES[:2]},
+                         {("expander", "flash_tank"), ("flash_tank", "expander")})
+        all_technologies = technologies + ("expander",)
+        self.assertEqual({case[1:] for case in LEGACY_ARCHITECTURES},
+                         set(itertools.product(all_technologies, repeat=2)))
+        self.assertEqual(len({case[0] for case in ARCHITECTURES}), 52)
+        self.assertEqual((len(COLORS), len(DASHES), len(MARKERS)), (25, 25, 25))
 
-    def test_each_component_view_has_seven_component_cases_and_one_reference(self):
+    def test_component_views_retain_reference_and_include_requested_hybrids(self):
         for choice, technology in (("economizador", "economizer"),
                                    ("flash", "flash_tank"), ("ejetor", "ejector")):
             view, = comparison_views(choice)
-            self.assertEqual(len(view.cases), 8)
+            self.assertEqual(len(view.cases), 1 + sum(
+                any(technology in technology_components(t) for t in case[1:])
+                for case in ARCHITECTURES[1:]))
             self.assertEqual(view.cases[0], ARCHITECTURES[0])
-            self.assertTrue(all(technology in case[1:] for case in view.cases[1:]))
+            self.assertTrue(all(any(technology in technology_components(t) for t in case[1:])
+                                for case in view.cases[1:]))
 
     def test_fixed_component_views_hold_component_not_temperature(self):
         views = comparison_views()
-        self.assertEqual(len(views), 16)
+        self.assertEqual(len(views), 21)
+        self.assertEqual(sum(view.folder.startswith(("componente_baixa_fixo/",
+                                                    "componente_alta_fixo/"))
+                             for view in views), 10)
         for view in views:
             if "componente_baixa_fixo" in view.folder:
                 technology = view.cases[0][1]
-                expected = {"simple": 5, "expander": 2}.get(technology, 4)
+                expected = sum(case[1] == technology for case in ARCHITECTURES)
                 self.assertEqual(len(view.cases), expected)
                 self.assertEqual(len({case[1] for case in view.cases}), 1)
             if "componente_alta_fixo" in view.folder:
                 technology = view.cases[0][2]
-                expected = {"simple": 5, "expander": 2}.get(technology, 4)
+                expected = sum(case[2] == technology for case in ARCHITECTURES)
                 self.assertEqual(len(view.cases), expected)
                 self.assertEqual(len({case[2] for case in view.cases}), 1)
             self.assertIn(view.reference, {case[0] for case in view.cases})
@@ -96,6 +111,9 @@ class ComparisonTests(unittest.TestCase):
                                   low_condensation_C=45))
             groups.append((label, [dict(configuration=label, status="valid", COP=2+index/100,
                                         low_condensation_C=float(t), W_shaft_kW=80,
+                                        W_net_shaft_kW=80, W_compressor_shaft_kW=90,
+                                        W_expander_shaft_kW=12.5, W_recovered_kW=10,
+                                        W_recovery_loss_kW=2.5,
                                         low_discharge_C=90, high_discharge_C=140,
                                         low_minimum_efficiency=0.75, high_minimum_efficiency=0.72)
                                    for t in temperatures]))

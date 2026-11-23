@@ -17,6 +17,7 @@ from hthp.cli import (build_parser, main, run_all_architectures,
                       run_comparison, selected_case)
 from hthp.comparisons import comparison_views
 from hthp.configurations import (ARCHITECTURES, EXPANDER_ARCHITECTURES,
+                                 EXPANDER_HYBRID_ARCHITECTURES,
                                  ComponentParams)
 
 
@@ -196,8 +197,11 @@ class ExpanderCommandTests(unittest.TestCase):
                     run.assert_not_called()
 
     def test_expander_view_has_the_conventional_reference_and_all_power_metrics(self):
+        from hthp.configurations import technology_components
         view, = comparison_views("expansor")
-        self.assertEqual(view.cases, (ARCHITECTURES[0],) + EXPANDER_ARCHITECTURES)
+        self.assertEqual(view.cases, (ARCHITECTURES[0],) + tuple(
+            case for case in ARCHITECTURES[1:]
+            if any("expander" in technology_components(t) for t in case[1:])))
         self.assertTrue(view.all_metrics)
         self.assertEqual(view.reference, "Conventional cascade")
 

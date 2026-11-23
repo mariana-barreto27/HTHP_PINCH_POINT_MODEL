@@ -4,6 +4,11 @@ Flow: compressor -> condenser -> optional WATER subcooler -> IHX hot side
 -> motive nozzle -> separator. Separator vapour -> IHX cold side -> compressor;
 separator liquid -> valve -> evaporator -> ejector secondary inlet.
 
+The optional expander replaces ONLY that last liquid valve, from separator
+pressure to evaporation pressure. It does not replace the motive nozzle or
+recover the same pressure potential twice. Recovered work assists the motor
+shaft; unrecovered expander power is an external loss, not useful heating.
+
 The two mass streams are not injection streams. With mu=m_evap/m_compressor,
 separator outlet quality must be x=1/(1+mu). Separator pressure and mu are
 solved simultaneously with scipy.optimize.least_squares. IHX duty is set by
@@ -21,6 +26,7 @@ from hthp.components.compressor_performance import IsentropicEfficiencyModel
 from hthp.components.ejector import TwoPhaseEjector, EjectorResult
 from hthp.components.evaporator import Evaporator
 from hthp.components.expansion_valve import ExpansionValve
+from hthp.components.expander import AdiabaticExpander, ExpanderResult
 from hthp.heat_sources.base import HeatSource, HeatSourceEvaluation
 from hthp.thermo.properties import critical_temperature_C, saturation_pressure_Pa
 from hthp.thermo.state import ThermodynamicState
@@ -42,6 +48,9 @@ class EjectorCycleConfig:
     mixing_efficiency: float = 0.50
     diffuser_efficiency: float = 0.50
     ihx_minimum_approach_K: float = 5.0
+    use_expander: bool = False
+    expander_isentropic_efficiency: float = 0.50
+    expander_recovery_efficiency: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -71,6 +80,13 @@ class EjectorCycleResult:
     ihx_balance_error_kW: float
     closure_residual: float
     heat_source: HeatSourceEvaluation
+    expander_shaft_power_kW: float = 0.0
+    recovered_power_kW: float = 0.0
+    unrecovered_expander_power_kW: float = 0.0
+    net_shaft_power_kW: float = 0.0
+    net_electrical_power_kW: float = 0.0
+    system_energy_balance_error_kW: float = 0.0
+    expander: ExpanderResult | None = None
 
 
 class EjectorCycle:
@@ -80,6 +96,10 @@ class EjectorCycle:
     def solve(self):
         c = self.config
         fluid = c.refrigerant
+        expander_model = AdiabaticExpander(c.expander_isentropic_efficiency)
+        if (not math.isfinite(c.expander_recovery_efficiency)
+                or not 0 <= c.expander_recovery_efficiency <= 1):
+            raise ValueError("Expander recovery efficiency must be in [0, 1].")
         tev = c.heat_source.evaporation_temperature_C()
         if not (math.isfinite(c.heating_capacity_kW) and c.heating_capacity_kW > 0
                 and 0 < c.superheat_K and 0 <= c.subcooling_K
@@ -181,7 +201,9 @@ class EjectorCycle:
                                  c.compressor_efficiency_model).compress(fluid, suction, pcd)
         if compression.outlet.quality is not None and compression.outlet.quality < 1:
             raise ValueError("Ejector-cycle compressor discharge is not dry vapour.")
-        valve = ExpansionValve().expand(fluid, liquid, pev)
+        expansion = expander_model.expand(fluid, liquid, pev) if c.use_expander else None
+        valve = (expansion.outlet if expansion is not None
+                 else ExpansionValve().expand(fluid, liquid, pev))
         qcond = compression.outlet.enthalpy_kJ_kg - condenser.enthalpy_kJ_kg
         qev = secondary.enthalpy_kJ_kg - valve.enthalpy_kJ_kg
         if qcond <= 0 or qev <= 0:
@@ -191,8 +213,17 @@ class EjectorCycle:
         qsc = mass * c.external_subcooling_specific_heat_kJ_kg
         shaft = mass * compression.specific_shaft_work_kJ_kg
         electric = mass * compression.specific_electrical_work_kJ_kg
+        expander_power = (evap_mass * expansion.specific_shaft_work_kJ_kg
+                          if expansion is not None else 0.0)
+        recovered = c.expander_recovery_efficiency * expander_power
+        unrecovered = expander_power - recovered
+        net_shaft = shaft - recovered
+        net_electric = electric - recovered / c.motor_efficiency
+        if not math.isfinite(net_shaft) or net_shaft <= 0 or net_electric <= 0:
+            raise ValueError("Ejector/expander cycle requires positive net motor power.")
         evap_heat = evap_mass * qev
-        energy_error = c.heating_capacity_kW + qsc - shaft - evap_heat
+        energy_error = c.heating_capacity_kW + qsc - shaft - evap_heat + expander_power
+        system_error = c.heating_capacity_kW + qsc + unrecovered - evap_heat - net_shaft
         mass_error = mass - result.outlet.quality * (mass + evap_mass)
         if abs(energy_error) > 1e-6 * (c.heating_capacity_kW + qsc):
             raise ValueError("The ejector cycle does not close its energy balance.")
@@ -217,10 +248,17 @@ class EjectorCycle:
             compressor_electrical_power_kW=electric,
             compressor_isentropic_efficiency=compression.isentropic_efficiency,
             pressure_ratio=compression.pressure_ratio,
-            heating_COP=(c.heating_capacity_kW + qsc) / electric,
+            heating_COP=(c.heating_capacity_kW + qsc) / net_electric,
             energy_balance_error_kW=energy_error,
             separator_mass_balance_error_kg_s=mass_error,
             ihx_balance_error_kW=mass * ((water_sc.enthalpy_kJ_kg-primary.enthalpy_kJ_kg)
                                         - (suction.enthalpy_kJ_kg-vapour.enthalpy_kJ_kg)),
             closure_residual=closure, heat_source=source,
+            expander_shaft_power_kW=expander_power,
+            recovered_power_kW=recovered,
+            unrecovered_expander_power_kW=unrecovered,
+            net_shaft_power_kW=net_shaft,
+            net_electrical_power_kW=net_electric,
+            system_energy_balance_error_kW=system_error,
+            expander=expansion,
         )

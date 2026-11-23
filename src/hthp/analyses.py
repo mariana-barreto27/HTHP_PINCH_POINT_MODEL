@@ -33,6 +33,7 @@ def _compressors(stage, p, suffix):
 
 
 def record(label, p, cycle):
+    from hthp.configurations import has_injection
     low, high = cycle["low"], cycle["high"]
     compressor_power = sum(s.get("W_compressor", s["W"]) for s in (low, high))
     expander_power = sum(s.get("W_expander", 0.0) for s in (low, high))
@@ -63,7 +64,7 @@ def record(label, p, cycle):
         pinch_subcooler_K=p.DT_pinch_sc, condenser_subcooling_low_K=p.SUB_l,
         condenser_subcooling_high_K=p.SUB_h,
         intermediate_pressures_optimized=p.optimize_injection and any(
-            technology in ("flash_tank", "economizer")
+            has_injection(technology)
             for technology in (p.low_technology, p.high_technology)),
     )
     for prefix, stage, suffix in (("low", low, "l"), ("high", high, "h")):
@@ -75,9 +76,12 @@ def record(label, p, cycle):
             for field in ("expander_isentropic_efficiency", "expander_recovery_efficiency",
                           "expander_inlet_quality", "expander_outlet_quality",
                           "expander_inlet_entropy_kJ_kgK", "expander_outlet_entropy_kJ_kgK"):
-                row[prefix + "_" + field] = stage[field]
+                row[prefix + "_" + field] = stage.get(field, "")
         row[prefix + "_injection_pressure_bar"] = stage.get("P_int", "")
         row[prefix + "_injection_fraction"] = stage.get("injection_fraction", 0.0)
+        row[prefix + "_refrigerant_mass_flow_kg_s"] = stage["m_dot"]
+        row[prefix + "_evaporator_mass_flow_kg_s"] = stage.get("m_dot_evap", stage["m_dot"])
+        row[prefix + "_injected_mass_flow_kg_s"] = stage["m_dot"] * stage.get("injection_fraction", 0.0)
         row[prefix + "_discharge_C"] = stage["T2"]
         row[prefix + "_evaporator_pressure_bar"] = stage["P_ev"]
         row[prefix + "_suction_pressure_bar"] = stage.get("P_suction", stage["P_ev"])
@@ -104,17 +108,32 @@ def plot_curves(groups, xkey, ykey, xlabel, ylabel, title, path, p, legend_title
     from hthp.configurations import ARCHITECTURES
 
     style_indices = {case[0]: index for index, case in enumerate(ARCHITECTURES)}
-    if subcooler_comparison and len(groups) > 20:
-        # Thirty-two labels need real space; constrained layout otherwise
-        # collapses the axes and lets the legend cover the x-axis label.
-        fig, ax = plt.subplots(figsize=(190/25.4, 230/25.4), layout="none")
-        fig.subplots_adjust(left=0.13, right=0.98, top=0.89, bottom=0.46)
+    if len(groups) >= 20:
+        # Reserve physical space for large legends: 20-label paired families,
+        # the 25-architecture comparison and the complete 50-label campaign.
+        legend_rows = (len(groups) + 1) // 2
+        height_mm = 130 + 4 * legend_rows
+        bottom = (16 + 4 * legend_rows) / height_mm
+        fig, ax = plt.subplots(figsize=(190/25.4, height_mm/25.4), layout="none")
+        fig.subplots_adjust(left=0.13, right=0.98, top=0.89, bottom=bottom)
     else:
         fig, ax = plt.subplots()
+    def value(row):
+        if row["status"] != "valid":
+            return np.nan
+        try:
+            return float(row.get(ykey, np.nan))
+        except (TypeError, ValueError):
+            return np.nan
+
     for index, (label, rows) in enumerate(groups):
         base_label = rows[0].get("base_configuration", label) if rows else label
         index = style_indices.get(base_label, index)
-        line_style = DASHES[index % len(DASHES)]
+        # Preserve every legacy style; additional architectures get a new
+        # color/dash pairing rather than repeating case zero at index 25.
+        generation = index // len(COLORS)
+        color_index = (index + 7 * generation) % len(COLORS)
+        line_style = DASHES[(index + 3 * generation) % len(DASHES)]
         display_label = compact_label(label)
         if subcooler_comparison and rows:
             with_subcooler = rows[0]["with_high_stage_subcooler"]
@@ -124,8 +143,7 @@ def plot_curves(groups, xkey, ykey, xlabel, ylabel, title, path, p, legend_title
         points = [row for row in rows if xkey in row]
         if points:
             ax.plot([row[xkey] for row in points],
-                    [row.get(ykey, np.nan) if row["status"] == "valid" else np.nan
-                     for row in points], color=COLORS[index % len(COLORS)],
+                    [value(row) for row in points], color=COLORS[color_index],
                     linestyle=line_style, marker="none", label=display_label)
     if p.MODO_AGUA_COND == "SATURADO":
         water_condition = f"saturated water at {p.T_sat_w_cond:g} °C"
@@ -166,6 +184,7 @@ def evaluate(label, p, temperature):
 def ph_analysis(p, cases, output_dir, cycles=None):
     """Plot the selected cycle stages using their calculated state points."""
     from hthp.plots.cycles.diagrams import plot_cycles
+    from hthp.configurations import technology_components
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -191,7 +210,7 @@ def ph_analysis(p, cases, output_dir, cycles=None):
                 if technology in ("simple", "expander"):
                     pairs = [(1, 2, "-"), (2, 3, "-"), (3, "3E", "-"), ("3E", 4, "-"), (4, 1, "-")]
                     main_loop = [1, 2, 3, "3E", 4]
-                elif technology == "ejector":
+                elif technology in ("ejector", "ejector_expander"):
                     pairs = [("suction", "discharge", "-"),
                              ("discharge", "condenser_out", "-"),
                              ("condenser_out", "subcooler_out", "-"),
@@ -207,10 +226,35 @@ def ph_analysis(p, cases, output_dir, cycles=None):
                              ("evaporator_in", "evaporator_out", "-")]
                     # Branched ejector processes are not one simple polygon.
                     main_loop = []
+                elif technology in ("flash_ejector", "economizer_ejector"):
+                    pairs = [("suction", "first_discharge", "-"),
+                             ("first_discharge", "mixed", "--"),
+                             ("injection_vapour", "mixed", "--"),
+                             ("mixed", "discharge", "-"),
+                             ("discharge", "condenser_out", "-"),
+                             ("condenser_out", "subcooler_out", "-"),
+                             ("subcooler_out", "injection_in", "-"),
+                             ("main_after_injection_hx", "motive_in", "-"),
+                             ("motive_in", "nozzle_out", "-"),
+                             ("nozzle_out", "mixing", "--"),
+                             ("evaporator_out", "mixing", "--"),
+                             ("mixing", "ejector_out", "-"),
+                             ("ejector_out", "separator_vapour", "--"),
+                             ("ejector_out", "separator_liquid", "--"),
+                             ("separator_vapour", "suction", "-"),
+                             ("separator_liquid", "evaporator_in", "-"),
+                             ("evaporator_in", "evaporator_out", "-")]
+                    if technology == "flash_ejector":
+                        pairs += [("injection_in", "injection_vapour", "--"),
+                                  ("injection_in", "main_after_injection_hx", "--")]
+                    else:
+                        pairs += [("injection_in", "injection_vapour", "-"),
+                                  ("subcooler_out", "main_after_injection_hx", "-")]
+                    main_loop = []
                 else:
                     pairs = [("1", "2", "-"), ("2", "3", "--"), ("3", "4", "-"),
                              ("4", "5", "-"), ("5", "5E", "-")]
-                    if technology == "flash_tank":
+                    if "flash_tank" in technology_components(technology):
                         pairs += [("5E", "6", "-"), ("6", "6L", "--"), ("6", "6V", "--"),
                                   ("6L", "7", "-"), ("7", "1", "-"), ("6V", "3", "--")]
                         main_loop = ["1", "2", "3", "4", "5", "6L", "7"]

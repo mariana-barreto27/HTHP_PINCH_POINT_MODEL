@@ -22,6 +22,7 @@ from hthp.cycles.economizer_cycle import EconomizerCycle, EconomizerCycleConfig
 from hthp.cycles.simple_cycle import SimpleVaporCompressionCycle, SimpleCycleConfig
 from hthp.cycles.ejector_cycle import EjectorCycle, EjectorCycleConfig
 from hthp.cycles.expander_cycle import ExpanderCycle, ExpanderCycleConfig
+from hthp.cycles.injection_ejector_cycle import InjectionEjectorCycle, InjectionEjectorCycleConfig
 from hthp.heat_sources.fixed_temperature import FixedTemperatureHeatSource
 
 
@@ -80,9 +81,58 @@ EXPANDER_ARCHITECTURES = (
     ("Expanders in both stages", "expander", "expander"),
 )
 
-# Keep all sixteen previous names and plotting indices unchanged. The first
-# expander study isolates its location rather than adding unrequested hybrids.
-ARCHITECTURES = BASE_ARCHITECTURES + MIXED_ARCHITECTURES + EXPANDER_ARCHITECTURES
+EXPANDER_HYBRID_ARCHITECTURES = (
+    ("Low-stage expander / high-stage flash tank", "expander", "flash_tank"),
+    ("Low-stage flash tank / high-stage expander", "flash_tank", "expander"),
+    ("Low-stage expander / high-stage economizer", "expander", "economizer"),
+    ("Low-stage economizer / high-stage expander", "economizer", "expander"),
+    ("Low-stage expander / high-stage ejector + IHX", "expander", "ejector"),
+    ("Low-stage ejector + IHX / high-stage expander", "ejector", "expander"),
+)
+
+# Preserve the first twenty-one names/styles and complete all five-by-five
+# cross-stage choices. Hybrids combine components in different circuits,
+# not an expander and another expansion device in the same refrigerant path.
+LEGACY_ARCHITECTURES = (BASE_ARCHITECTURES + MIXED_ARCHITECTURES + EXPANDER_ARCHITECTURES
+                        + EXPANDER_HYBRID_ARCHITECTURES)
+
+# These are topologies WITHIN one refrigerant circuit, not cross-stage pairs.
+# Each tuple describes (display name, solver family, expansion placement).
+INTRASTAGE_TECHNOLOGIES = {
+    "flash_expander_before": ("flash tank + expander before tank", "flash_tank", "before"),
+    "flash_expander_after": ("flash tank + expander after tank", "flash_tank", "after"),
+    "flash_expander_both": ("flash tank + two expanders", "flash_tank", "both"),
+    "economizer_expander_main": ("economizer + main-stream expander", "economizer", "main"),
+    "economizer_expander_injection": ("economizer + injection-stream expander", "economizer", "injection"),
+    "economizer_expander_both": ("economizer + two expanders", "economizer", "both"),
+    "ejector_expander": ("ejector + IHX + liquid-stream expander", "ejector", "liquid"),
+    "flash_ejector": ("flash tank + ejector + IHX", "injection_ejector", "flash_tank"),
+    "economizer_ejector": ("economizer + ejector + IHX", "injection_ejector", "economizer"),
+}
+INTRASTAGE_ARCHITECTURES = tuple(
+    case
+    for technology, (name, _, _) in INTRASTAGE_TECHNOLOGIES.items()
+    for case in ((f"Low-stage {name}", technology, "simple"),
+                 (f"High-stage {name}", "simple", technology),
+                 (f"Both stages: {name}", technology, technology))
+)
+ARCHITECTURES = LEGACY_ARCHITECTURES + INTRASTAGE_ARCHITECTURES
+
+
+def technology_components(technology):
+    """Membership for comparison families, never inferred from a display label."""
+    if technology.startswith("flash_expander_"):
+        return frozenset(("flash_tank", "expander"))
+    if technology.startswith("economizer_expander_"):
+        return frozenset(("economizer", "expander"))
+    return {"ejector_expander": frozenset(("ejector", "expander")),
+            "flash_ejector": frozenset(("flash_tank", "ejector")),
+            "economizer_ejector": frozenset(("economizer", "ejector"))}.get(
+                technology, frozenset((technology,)))
+
+
+def has_injection(technology):
+    return bool(technology_components(technology) & {"flash_tank", "economizer"})
 
 
 @lru_cache(maxsize=2048)
@@ -110,9 +160,16 @@ def _solve_expander(config):
     return ExpanderCycle(config).solve()
 
 
+@lru_cache(maxsize=2048)
+def _solve_injection_ejector(config):
+    return InjectionEjectorCycle(config).solve()
+
+
 def _normalized_stage(p, stage, Tev, Tcd, q_sc):
     fluid = p.F_h if stage == "h" else p.F_l
     technology = p.high_technology if stage == "h" else p.low_technology
+    family, placement = (INTRASTAGE_TECHNOLOGIES[technology][1:]
+                         if technology in INTRASTAGE_TECHNOLOGIES else (technology, None))
     coefficients = (p.a_is_h, p.b_is_h, p.c_is_h) if stage == "h" else (p.a_is_l, p.b_is_l, p.c_is_l)
     efficiency = QuadraticPressureRatioEfficiency(*coefficients, p.eta_is_min, p.eta_is_max)
     kwargs = dict(refrigerant=fluid, heat_source=FixedTemperatureHeatSource(Tev),
@@ -144,28 +201,61 @@ def _normalized_stage(p, stage, Tev, Tcd, q_sc):
                     recovery_loss=result.unrecovered_expander_power_kW,
                     Qev=result.evaporator_heat_kW, Pint=None,
                     compressors=[(s[1], s[2], 1.0)])
-    if technology == "ejector":
+    if family == "ejector":
+        expansion_options = (dict(use_expander=True,
+            expander_isentropic_efficiency=p.expander_isentropic_efficiency,
+            expander_recovery_efficiency=p.expander_recovery_efficiency)
+            if technology == "ejector_expander" else {})
         result = _solve_ejector(EjectorCycleConfig(
             **kwargs, nozzle_efficiency=p.ejector_nozzle_efficiency,
             mixing_efficiency=p.ejector_mixing_efficiency,
             diffuser_efficiency=p.ejector_diffuser_efficiency,
-            ihx_minimum_approach_K=p.ejector_ihx_minimum_approach_K))
+            ihx_minimum_approach_K=p.ejector_ihx_minimum_approach_K, **expansion_options))
         s = result.states
         return dict(result=result, states=s, mass=result.refrigerant_mass_flow_kg_s,
                     main_fraction=result.entrainment_ratio, technology="ejector",
+                    injection_fraction=0.0,
                     suction=s["suction"], discharge=s["discharge"],
                     condenser=s["condenser_out"], sc=s["subcooler_out"],
                     evap_in=s["evaporator_in"], evap_out=s["evaporator_out"],
-                    work=result.compressor_shaft_power_kW,
+                    work=result.net_shaft_power_kW,
+                    gross_work=result.compressor_shaft_power_kW,
+                    expander_work=result.expander_shaft_power_kW,
+                    recovered_work=result.recovered_power_kW,
+                    recovery_loss=result.unrecovered_expander_power_kW,
                     Qev=result.evaporator_heat_kW, Pint=None,
                     compressors=[(s["suction"], s["discharge"], 1.0)])
     fraction = p.injection_fraction_high if stage == "h" else p.injection_fraction_low
     pev, pcd = ref.psat_bar(fluid, Tev, 1), ref.psat_bar(fluid, Tcd, 0)
     kwargs["intermediate_pressure_bar"] = pev * (pcd/pev)**fraction
-    if technology == "flash_tank":
+    if family == "injection_ejector":
+        result = _solve_injection_ejector(InjectionEjectorCycleConfig(
+            **kwargs, injection_mode=placement,
+            nozzle_efficiency=p.ejector_nozzle_efficiency,
+            mixing_efficiency=p.ejector_mixing_efficiency,
+            diffuser_efficiency=p.ejector_diffuser_efficiency,
+            ihx_minimum_approach_K=p.ejector_ihx_minimum_approach_K,
+            economizer_effectiveness=p.economizer_effectiveness,
+            economizer_minimum_approach_K=p.economizer_minimum_approach_K))
+        s, y = result.states, result.injection_mass_fraction
+        return dict(result=result, states=s, mass=result.total_refrigerant_mass_flow_kg_s,
+                    main_fraction=result.evaporator_mass_flow_kg_s/result.total_refrigerant_mass_flow_kg_s,
+                    injection_fraction=y, technology="injection_ejector",
+                    suction=s["suction"], discharge=s["discharge"],
+                    condenser=s["condenser_out"], sc=s["subcooler_out"],
+                    evap_in=s["evaporator_in"], evap_out=s["evaporator_out"],
+                    work=result.total_shaft_power_kW, Qev=result.evaporator_heat_kW,
+                    Pint=result.intermediate_pressure_bar,
+                    compressors=[(s["suction"], s["first_discharge"], 1-y),
+                                 (s["mixed"], s["discharge"], 1.0)])
+    if placement is not None:
+        kwargs.update(expansion_mode=placement,
+                      expander_isentropic_efficiency=p.expander_isentropic_efficiency,
+                      expander_recovery_efficiency=p.expander_recovery_efficiency)
+    if family == "flash_tank":
         result = _solve_flash(FlashTankCycleConfig(**kwargs))
         vapor_fraction = result.flash_vapor_fraction
-    elif technology == "economizer":
+    elif family == "economizer":
         kwargs.update(economizer_effectiveness=p.economizer_effectiveness,
                       economizer_minimum_approach_K=p.economizer_minimum_approach_K)
         result = _solve_economizer(EconomizerCycleConfig(**kwargs))
@@ -174,9 +264,14 @@ def _normalized_stage(p, stage, Tev, Tcd, q_sc):
         raise ValueError(f"Unknown component: {technology}")
     s = result.states
     return dict(result=result, states=s, mass=result.total_refrigerant_mass_flow_kg_s,
-                main_fraction=1-vapor_fraction, suction=s["1"], discharge=s["4"],
+                main_fraction=1-vapor_fraction, injection_fraction=vapor_fraction,
+                technology=technology, suction=s["1"], discharge=s["4"],
                 condenser=s["5"], sc=s["5E"], evap_in=s["7"],
-                work=result.total_shaft_power_kW, Qev=result.evaporator_heat_kW,
+                work=result.net_shaft_power_kW, gross_work=result.total_shaft_power_kW,
+                expander_work=result.expander_shaft_power_kW,
+                recovered_work=result.recovered_power_kW,
+                recovery_loss=result.unrecovered_expander_power_kW,
+                Qev=result.evaporator_heat_kW,
                 Pint=result.intermediate_pressure_bar,
                 compressors=[(s["1"], s["2"], 1-vapor_fraction), (s["3"], s["4"], 1.0)])
 
@@ -231,8 +326,7 @@ def _to_reference_dict(p, stage, Tev, Tcd, normalized, mass, qsc):
                   Q_cond=Qcond, Q_sc=Qsc, Q_ev=Qev, Q_total=Qcond+Qsc,
                   COP=(Qcond+Qsc)/W, residual=Qcond+Qsc+W_recovery_loss-W-Qev,
                   compressors=compressors, component_states=normalized["states"],
-                  injection_fraction=(0.0 if normalized.get("technology") in ("ejector", "expander")
-                                      else 1-normalized["main_fraction"]))
+                  injection_fraction=normalized.get("injection_fraction", 0.0))
     if normalized.get("technology") == "expander":
         result.update(
             expander_isentropic_efficiency=p.expander_isentropic_efficiency,
@@ -242,7 +336,10 @@ def _to_reference_dict(p, stage, Tev, Tcd, normalized, mass, qsc):
             expander_inlet_entropy_kJ_kgK=sc.entropy_kJ_kgK,
             expander_outlet_entropy_kJ_kgK=evap.entropy_kJ_kgK,
         )
-    if normalized.get("technology") == "ejector":
+    if "expander" in technology_components(p.high_technology if stage == "h" else p.low_technology):
+        result.update(expander_isentropic_efficiency=p.expander_isentropic_efficiency,
+                      expander_recovery_efficiency=p.expander_recovery_efficiency)
+    if normalized.get("technology") in ("ejector", "injection_ejector"):
         ejector = normalized["result"]
         result.update(
             P_separator=ejector.separator_pressure_bar,
@@ -334,7 +431,7 @@ The pressure search is distinct from the unchanged reference Tcond optimizer.
     fields = [name for name, technology in (
         ("injection_fraction_low", p.low_technology),
         ("injection_fraction_high", p.high_technology))
-        if technology in ("flash_tank", "economizer")]
+        if has_injection(technology)]
     if not fields:
         return ref.ciclo_cascata(replace(p, _evaluating_injection=True), T_cd_l)
     cache = {}

@@ -1,4 +1,4 @@
-"""Compare component additions against the same bare cascade reference."""
+"""Comparação da adição de componentes, com e sem subcooler."""
 
 from dataclasses import asdict, replace
 import json
@@ -12,7 +12,7 @@ from hthp.analyses import plot_curves, save_rows
 from hthp.comparisons import (comparison_metadata, comparison_views,
                               load_comparison_data, relative_cop_groups,
                               solver_signature, view_cases)
-from hthp.configurations import ComponentParams
+from hthp.configurations import ComponentParams, has_injection
 from hthp.optimum_report import save_optimum_report, save_combined_optima_report
 
 
@@ -21,24 +21,27 @@ def variant_label(label, with_subcooler):
 
 
 def pair_results(data):
-    """Keep both versions distinct in legends, tables and gain calculations."""
-    summaries, groups = [], []
-    for enabled, (variant_summaries, variant_groups) in data.items():
-        for row in variant_summaries:
+    """Identifica os resultados com e sem subcooler antes de agrupá-los."""
+    summaries = []
+    groups = []
+    for with_subcooler, (optima, curves) in data.items():
+        for row in optima:
             item = dict(row, base_configuration=row["configuration"],
-                        with_high_stage_subcooler=enabled)
-            item["configuration"] = variant_label(row["configuration"], enabled)
+                        with_high_stage_subcooler=with_subcooler)
+            item["configuration"] = variant_label(row["configuration"], with_subcooler)
             summaries.append(item)
-        for label, rows in variant_groups:
-            name = variant_label(label, enabled)
-            converted = [dict(row, configuration=name, base_configuration=label,
-                              with_high_stage_subcooler=enabled) for row in rows]
-            groups.append((name, converted))
+        for label, rows in curves:
+            name = variant_label(label, with_subcooler)
+            curve_rows = []
+            for row in rows:
+                curve_rows.append(dict(row, configuration=name, base_configuration=label,
+                                       with_high_stage_subcooler=with_subcooler))
+            groups.append((name, curve_rows))
     return summaries, groups
 
 
 def _variant_data(args, p, cases, views, output, signature):
-    # Import only at call time: CLI owns the shared physics calculation helpers.
+    # Importação local para evitar dependência circular com cli.py.
     from hthp.cli import (_calculate_comparison_optima, _calculate_architecture_curves,
                           _calculation_cache)
 
@@ -50,13 +53,18 @@ def _variant_data(args, p, cases, views, output, signature):
                   output / "dados" / variant / views[0].folder,
                   comparison_root / "todas_combinacoes",
                   comparison_root / views[0].folder]
+    if getattr(args, "recalcular", False):
+        candidates = []
     failures = []
-    for source in (() if getattr(args, "recalcular", False) else dict.fromkeys(candidates)):
+    for source in dict.fromkeys(candidates):
         try:
             summaries, groups = load_comparison_data(source, metadata, cases, temperatures)
-            for row in [*summaries, *(row for _, rows in groups for row in rows)]:
+            saved_rows = list(summaries)
+            for _, rows in groups:
+                saved_rows.extend(rows)
+            for row in saved_rows:
                 if row["status"] == "invalid" and "with_high_stage_subcooler" not in row:
-                    continue  # An old failed optimum has no calculated state record.
+                    continue  # Ótimos inviáveis antigos podem não ter esse campo.
                 if row.get("with_high_stage_subcooler") not in (p.use_subcooler, str(p.use_subcooler)):
                     raise ValueError("Subcooler não identificado corretamente nos dados salvos.")
             print(f"Reutilizando {variant}: {source}", flush=True)
@@ -68,11 +76,9 @@ def _variant_data(args, p, cases, views, output, signature):
                          "Execute sem --replotar. " + failures[-1])
     print(f"Calculando versões {variant} ({len(cases)} configurações)", flush=True)
     _calculation_cache(args)
-    # Exact parameter keys keep both subcooler settings separate while sharing
-    # the same calculation store (and same-campaign forced-refresh tracking).
-    options = dict(vars(args))
-    options["subcooler"] = p.use_subcooler
-    variant_args = SimpleNamespace(**options)
+    # Compartilha o cache, mas mantém os parâmetros de cada versão separados.
+    variant_args = SimpleNamespace(**vars(args))
+    variant_args.subcooler = p.use_subcooler
     summaries = [dict(row, with_high_stage_subcooler=p.use_subcooler)
                  for row in _calculate_comparison_optima(variant_args, p, cases)]
     groups = _calculate_architecture_curves(variant_args, p, cases)
@@ -81,26 +87,32 @@ def _variant_data(args, p, cases, views, output, signature):
     (destination / "conditions.json").write_text(
         json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
     save_rows(summaries, destination / "optima.csv")
-    save_rows([row for _, rows in groups for row in rows],
-              destination / "architecture_temperature_sweeps.csv")
+    sweep_rows = []
+    for _, rows in groups:
+        sweep_rows.extend(rows)
+    save_rows(sweep_rows, destination / "architecture_temperature_sweeps.csv")
     return summaries, groups
 
 
 def run_component_comparison(args, output):
-    """Two actual calculations per architecture, never just relabel a curve."""
+    """Calcula e compara cada arquitetura com e sem subcooler."""
     output = Path(output)
-    # The full and family figures explain additions without duplicating the
-    # existing fixed-stage views. Every figure uses the same bare reference.
-    views = tuple(view for view in comparison_views(args.grupo)
-                  if not view.folder.startswith(("componente_baixa_fixo/", "componente_alta_fixo/")))
+    # Os gráficos de estágio fixo já são gerados na comparação geral.
+    views = []
+    for view in comparison_views(args.grupo):
+        if not view.folder.startswith(("componente_baixa_fixo/", "componente_alta_fixo/")):
+            views.append(view)
+    views = tuple(views)
     cases = view_cases(views)
     p = ComponentParams(Q_target=args.carga*1000, T_source_in=args.fonte,
                         T_cd_l_step=args.tolerancia,
                         expander_isentropic_efficiency=args.eficiencia_expansor,
                         expander_recovery_efficiency=args.recuperacao_expansor)
     signature = solver_signature()
-    data = {enabled: _variant_data(args, replace(p, use_subcooler=enabled), cases,
-                                   views, output, signature) for enabled in (False, True)}
+    data = {}
+    for with_subcooler in (False, True):
+        case = replace(p, use_subcooler=with_subcooler)
+        data[with_subcooler] = _variant_data(args, case, cases, views, output, signature)
     summaries, groups = pair_results(data)
     if args.grupo == "todos":
         save_combined_optima_report(summaries, p, output.parent / "pontos_otimos", signature)
@@ -118,7 +130,7 @@ def run_component_comparison(args, output):
             low, high = technologies[row["base_configuration"]]
             case = replace(p, low_technology=low, high_technology=high,
                            use_subcooler=row["with_high_stage_subcooler"],
-                           optimize_injection=any(t in ("flash_tank", "economizer") for t in (low, high)))
+                           optimize_injection=any(has_injection(t) for t in (low, high)))
             case_parameters.append(dict(configuration=row["configuration"], parameters=asdict(case)))
         metadata = comparison_metadata(p, args.pontos, signature, view.cases)
         metadata.update(subcooler_comparison=True, reference=reference,
@@ -131,14 +143,19 @@ def run_component_comparison(args, output):
         save_rows(summary, destination / "optima.csv")
         save_optimum_report(summary, p, destination,
                             render=view.folder in ("todas_combinacoes", "por_componente/expansor"))
-        save_rows([row for _, rows in subset for row in rows],
-                  destination / "architecture_temperature_sweeps.csv")
+        sweep_rows = []
+        for _, rows in subset:
+            sweep_rows.extend(rows)
+        save_rows(sweep_rows, destination / "architecture_temperature_sweeps.csv")
         plot_curves(subset, "low_condensation_C", "COP",
                     "Low-stage condensation temperature [°C]", "Overall COP [-]",
                     view.title, destination / "cop_vs_low_stage_condensation", p,
                     subcooler_comparison=True)
         gains = relative_cop_groups(subset, reference)
-        save_rows([row for _, rows in gains for row in rows], destination / "cop_gains.csv")
+        gain_rows = []
+        for _, rows in gains:
+            gain_rows.extend(rows)
+        save_rows(gain_rows, destination / "cop_gains.csv")
         plot_curves(gains, "low_condensation_C", "COP_gain_percent",
                     "Low-stage condensation temperature [°C]", "COP change [%]",
                     view.title.replace("Cascade COP", "Cascade COP change"),

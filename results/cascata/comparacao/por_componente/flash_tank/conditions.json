@@ -68,8 +68,8 @@
     "injection_coordinate_passes": 3,
     "_evaluating_injection": false
   },
-  "points": 41,
-  "solver_signature": "2f8d34300d0671766059281eaf183ae6b0fbca6cfe28c604ff3940f5c55d06f1",
+  "points": 17,
+  "solver_signature": "2970432fabd5c3072943bd34102d12c1b996fff0ae6da33beba70ef3af22ab61",
   "cases": [
     {
       "configuration": "Conventional cascade",
@@ -110,6 +110,76 @@
       "configuration": "Low-stage ejector + IHX / high-stage flash tank",
       "low": "ejector",
       "high": "flash_tank"
+    },
+    {
+      "configuration": "Low-stage expander / high-stage flash tank",
+      "low": "expander",
+      "high": "flash_tank"
+    },
+    {
+      "configuration": "Low-stage flash tank / high-stage expander",
+      "low": "flash_tank",
+      "high": "expander"
+    },
+    {
+      "configuration": "Low-stage flash tank + expander before tank",
+      "low": "flash_expander_before",
+      "high": "simple"
+    },
+    {
+      "configuration": "High-stage flash tank + expander before tank",
+      "low": "simple",
+      "high": "flash_expander_before"
+    },
+    {
+      "configuration": "Both stages: flash tank + expander before tank",
+      "low": "flash_expander_before",
+      "high": "flash_expander_before"
+    },
+    {
+      "configuration": "Low-stage flash tank + expander after tank",
+      "low": "flash_expander_after",
+      "high": "simple"
+    },
+    {
+      "configuration": "High-stage flash tank + expander after tank",
+      "low": "simple",
+      "high": "flash_expander_after"
+    },
+    {
+      "configuration": "Both stages: flash tank + expander after tank",
+      "low": "flash_expander_after",
+      "high": "flash_expander_after"
+    },
+    {
+      "configuration": "Low-stage flash tank + two expanders",
+      "low": "flash_expander_both",
+      "high": "simple"
+    },
+    {
+      "configuration": "High-stage flash tank + two expanders",
+      "low": "simple",
+      "high": "flash_expander_both"
+    },
+    {
+      "configuration": "Both stages: flash tank + two expanders",
+      "low": "flash_expander_both",
+      "high": "flash_expander_both"
+    },
+    {
+      "configuration": "Low-stage flash tank + ejector + IHX",
+      "low": "flash_ejector",
+      "high": "simple"
+    },
+    {
+      "configuration": "High-stage flash tank + ejector + IHX",
+      "low": "simple",
+      "high": "flash_ejector"
+    },
+    {
+      "configuration": "Both stages: flash tank + ejector + IHX",
+      "low": "flash_ejector",
+      "high": "flash_ejector"
     }
   ],
   "reference": "Conventional cascade",

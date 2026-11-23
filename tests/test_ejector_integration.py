@@ -7,7 +7,8 @@ from hthp import model
 from hthp.analyses import record
 from hthp.cli import build_parser, selected_case
 from hthp.cli import run_all_architectures
-from hthp.configurations import ARCHITECTURES, ComponentParams
+from hthp.configurations import (ARCHITECTURES, EXPANDER_HYBRID_ARCHITECTURES,
+                                 ComponentParams)
 from unittest.mock import patch
 
 
@@ -55,7 +56,9 @@ class EjectorIntegrationTests(unittest.TestCase):
         self.assertAlmostEqual(c["Q_total"], 170000)
 
     def test_command_line_and_architecture_registry(self):
-        self.assertEqual(len(ARCHITECTURES), 19)
+        self.assertEqual(len(ARCHITECTURES), 52)
+        self.assertEqual(len(EXPANDER_HYBRID_ARCHITECTURES), 6)
+        self.assertTrue(set(EXPANDER_HYBRID_ARCHITECTURES).issubset(ARCHITECTURES))
         parser = build_parser()
         for stage in ("alta", "baixa", "ambos"):
             args = parser.parse_args(["--componente", "ejetor", "--estagio", stage])

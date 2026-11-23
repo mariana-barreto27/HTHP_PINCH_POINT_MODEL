@@ -1,0 +1,36 @@
+# Pontos ótimos por configuração
+
+Carga útil total: 170 kW; fonte: 30 °C; refrigerantes: R32 (baixa) / R1233zd(E) (alta).
+
+Cada linha apresenta o melhor ponto encontrado para a própria configuração. O asterisco identifica a temperatura nesse ponto; não significa uma temperatura comum a todos os casos.
+
+Ganho = 100 × (COP máximo da configuração / COP máximo convencional − 1), sempre com o mesmo estado do subcooler. Nos gráficos de ganho, a referência é comparada à mesma temperatura, o que é uma comparação diferente.
+
+SC alta: subcooler externo somente no estágio de alta; versões com e sem são calculadas separadamente.
+
+Nos gráficos de adição de componentes, a referência é o convencional sem subcooler; nesta tabela o ganho mantém o mesmo estado do subcooler para isolar o efeito da arquitetura.
+
+— indica valor indisponível. Casos inviáveis permanecem identificados abaixo da tabela.
+
+| Estágio de baixa | Estágio de alta | SC alta | COP máximo | Tcond,baixa* [°C] | Tevap,alta* [°C] | Potência líquida [kW] | Ganho entre ótimos [%] |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Economizador + ejetor + IHX | Economizador + ejetor + IHX | Sim | 2.544 | 51.43 | 46.43 | 66.83 | 9.98 |
+| Economizador | Economizador | Sim | 2.530 | 51.55 | 46.55 | 67.20 | 9.37 |
+| Convencional | Economizador + ejetor + IHX | Sim | 2.518 | 45.06 | 40.06 | 67.51 | 8.87 |
+| Convencional | Economizador | Sim | 2.506 | 45.67 | 40.67 | 67.83 | 8.36 |
+| Economizador + ejetor + IHX | Economizador + ejetor + IHX | Não | 2.426 | 56.67 | 51.67 | 70.07 | 13.66 |
+| Economizador | Economizador | Não | 2.410 | 56.82 | 51.82 | 70.54 | 12.90 |
+| Convencional | Economizador + ejetor + IHX | Não | 2.391 | 49.32 | 44.32 | 71.09 | 12.02 |
+| Economizador + ejetor + IHX | Convencional | Sim | 2.387 | 66.11 | 61.11 | 71.22 | 3.21 |
+| Economizador | Convencional | Sim | 2.380 | 65.67 | 60.67 | 71.42 | 2.91 |
+| Convencional | Economizador | Não | 2.378 | 49.99 | 44.99 | 71.50 | 11.38 |
+| Ejetor + IHX | Ejetor + IHX | Sim | 2.345 | 59.17 | 54.17 | 72.50 | 1.37 |
+| Convencional | Ejetor + IHX | Sim | 2.335 | 58.36 | 53.36 | 72.82 | 0.94 |
+| Ejetor + IHX | Convencional | Sim | 2.324 | 60.25 | 55.25 | 73.16 | 0.46 |
+| Convencional | Convencional | Sim | 2.313 | 59.44 | 54.44 | 73.50 | 0.00 |
+| Economizador + ejetor + IHX | Convencional | Não | 2.223 | 71.07 | 66.07 | 76.48 | 4.14 |
+| Economizador | Convencional | Não | 2.215 | 70.71 | 65.71 | 76.73 | 3.79 |
+| Ejetor + IHX | Ejetor + IHX | Não | 2.175 | 64.03 | 59.03 | 78.16 | 1.89 |
+| Convencional | Ejetor + IHX | Não | 2.164 | 63.21 | 58.21 | 78.58 | 1.36 |
+| Ejetor + IHX | Convencional | Não | 2.147 | 65.27 | 60.27 | 79.20 | 0.56 |
+| Convencional | Convencional | Não | 2.135 | 64.45 | 59.45 | 79.64 | 0.00 |

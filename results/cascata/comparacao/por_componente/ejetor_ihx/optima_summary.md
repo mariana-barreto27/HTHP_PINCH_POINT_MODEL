@@ -8,15 +8,28 @@ Ganho = 100 × (COP máximo da configuração / COP máximo convencional − 1),
 
 Subcooler externo somente no estágio de alta.
 
+Expansor: eficiência isentrópica = 0.5; fração útil da potência de eixo = 1. São hipóteses exploratórias, não dados validados de fabricante. A potência líquida desconta a potência recuperada.
+
 — indica valor indisponível. Casos inviáveis permanecem identificados abaixo da tabela.
 
 | Estágio de baixa | Estágio de alta | COP máximo | Tcond,baixa* [°C] | Tevap,alta* [°C] | Potência líquida [kW] | Ganho entre ótimos [%] |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Flash tank + ejetor + IHX | Flash tank + ejetor + IHX | 2.592 | 50.42 | 45.42 | 65.60 | 12.05 |
+| Convencional | Flash tank + ejetor + IHX | 2.559 | 42.97 | 37.97 | 66.42 | 10.66 |
 | Ejetor + IHX | Flash tank | 2.556 | 44.25 | 39.25 | 66.51 | 10.52 |
+| Economizador + ejetor + IHX | Economizador + ejetor + IHX | 2.544 | 51.43 | 46.43 | 66.83 | 9.98 |
+| Convencional | Economizador + ejetor + IHX | 2.518 | 45.06 | 40.06 | 67.51 | 8.87 |
 | Ejetor + IHX | Economizador | 2.511 | 46.53 | 41.53 | 67.70 | 8.56 |
+| Ejetor + IHX | Expansor | 2.434 | 55.89 | 50.89 | 69.84 | 5.25 |
 | Flash tank | Ejetor + IHX | 2.418 | 65.56 | 60.56 | 70.30 | 4.55 |
+| Flash tank + ejetor + IHX | Convencional | 2.405 | 66.86 | 61.86 | 70.68 | 3.99 |
+| Expansor | Ejetor + IHX | 2.400 | 62.95 | 57.95 | 70.82 | 3.78 |
 | Economizador | Ejetor + IHX | 2.398 | 64.60 | 59.60 | 70.90 | 3.66 |
+| Economizador + ejetor + IHX | Convencional | 2.387 | 66.11 | 61.11 | 71.22 | 3.21 |
+| Ejetor + IHX + expansor no líquido | Ejetor + IHX + expansor no líquido | 2.345 | 59.18 | 54.18 | 72.50 | 1.38 |
 | Ejetor + IHX | Ejetor + IHX | 2.345 | 59.17 | 54.17 | 72.50 | 1.37 |
+| Convencional | Ejetor + IHX + expansor no líquido | 2.335 | 58.35 | 53.35 | 72.82 | 0.94 |
 | Convencional | Ejetor + IHX | 2.335 | 58.36 | 53.36 | 72.82 | 0.94 |
+| Ejetor + IHX + expansor no líquido | Convencional | 2.324 | 60.25 | 55.25 | 73.16 | 0.47 |
 | Ejetor + IHX | Convencional | 2.324 | 60.25 | 55.25 | 73.16 | 0.46 |
 | Convencional | Convencional | 2.313 | 59.44 | 54.44 | 73.50 | 0.00 |

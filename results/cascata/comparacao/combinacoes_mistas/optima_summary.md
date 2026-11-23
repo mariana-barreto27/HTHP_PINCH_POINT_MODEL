@@ -8,14 +8,22 @@ Ganho = 100 × (COP máximo da configuração / COP máximo convencional − 1),
 
 Subcooler externo somente no estágio de alta.
 
+Expansor: eficiência isentrópica = 0.5; fração útil da potência de eixo = 1. São hipóteses exploratórias, não dados validados de fabricante. A potência líquida desconta a potência recuperada.
+
 — indica valor indisponível. Casos inviáveis permanecem identificados abaixo da tabela.
 
 | Estágio de baixa | Estágio de alta | COP máximo | Tcond,baixa* [°C] | Tevap,alta* [°C] | Potência líquida [kW] | Ganho entre ótimos [%] |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Expansor | Flash tank | 2.583 | 48.84 | 43.84 | 65.81 | 11.69 |
 | Economizador | Flash tank | 2.571 | 48.76 | 43.76 | 66.13 | 11.15 |
 | Ejetor + IHX | Flash tank | 2.556 | 44.25 | 39.25 | 66.51 | 10.52 |
 | Flash tank | Economizador | 2.544 | 53.35 | 48.35 | 66.83 | 9.99 |
+| Expansor | Economizador | 2.542 | 51.24 | 46.24 | 66.89 | 9.89 |
 | Ejetor + IHX | Economizador | 2.511 | 46.53 | 41.53 | 67.70 | 8.56 |
+| Flash tank | Expansor | 2.497 | 61.87 | 56.87 | 68.08 | 7.97 |
+| Economizador | Expansor | 2.478 | 60.79 | 55.79 | 68.62 | 7.12 |
+| Ejetor + IHX | Expansor | 2.434 | 55.89 | 50.89 | 69.84 | 5.25 |
 | Flash tank | Ejetor + IHX | 2.418 | 65.56 | 60.56 | 70.30 | 4.55 |
+| Expansor | Ejetor + IHX | 2.400 | 62.95 | 57.95 | 70.82 | 3.78 |
 | Economizador | Ejetor + IHX | 2.398 | 64.60 | 59.60 | 70.90 | 3.66 |
 | Convencional | Convencional | 2.313 | 59.44 | 54.44 | 73.50 | 0.00 |

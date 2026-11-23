@@ -1,12 +1,13 @@
 """Ciclo de dois estágios com flash tank e injeção de vapor."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 
 from hthp.components.compressor import Compressor
 from hthp.components.compressor_performance import IsentropicEfficiencyModel
 from hthp.components.condenser import Condenser
 from hthp.components.evaporator import Evaporator
+from hthp.components.expander import AdiabaticExpander, ExpanderResult
 from hthp.components.expansion_valve import ExpansionValve
 from hthp.components.flash_tank import FlashTank
 from hthp.components.mixer import Mixer
@@ -28,6 +29,10 @@ class FlashTankCycleConfig:
     motor_efficiency: float = 0.95
     compressor_efficiency_model: IsentropicEfficiencyModel | None = None
     external_subcooling_specific_heat_kJ_kg: float = 0.0
+    # Equilibrium two-phase expansion, not a validated turbine geometry/map.
+    expansion_mode: str = "valves"  # valves | before | after | both
+    expander_isentropic_efficiency: float = 0.50
+    expander_recovery_efficiency: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -60,6 +65,13 @@ class FlashTankCycleResult:
     high_stage_pressure_ratio: float
     energy_balance_error_kW: float
     heat_source: HeatSourceEvaluation
+    expander_shaft_power_kW: float = 0.0
+    recovered_power_kW: float = 0.0
+    unrecovered_expander_power_kW: float = 0.0
+    net_shaft_power_kW: float = 0.0
+    net_electrical_power_kW: float = 0.0
+    system_energy_balance_error_kW: float = 0.0
+    expanders: dict[str, ExpanderResult] = field(default_factory=dict)
 
     @property
     def relative_energy_balance_error(self) -> float:
@@ -86,6 +98,8 @@ class FlashTankCycle:
             config.compressor_efficiency_model,
         )
         valve = ExpansionValve()
+        expander = AdiabaticExpander(config.expander_isentropic_efficiency)
+        expanders = {}
 
         state_1 = evaporator.outlet_state(config.refrigerant)
         state_5 = condenser.outlet_state(config.refrigerant)
@@ -108,20 +122,24 @@ class FlashTankCycle:
                 "A pressão intermediária deve ficar entre evaporação e condensação."
             )
 
-        state_6 = valve.expand(
-            config.refrigerant,
-            state_5_external,
-            intermediate_pressure,
-        )
+        if config.expansion_mode in ("before", "both"):
+            expanders["before"] = expander.expand(
+                config.refrigerant, state_5_external, intermediate_pressure)
+            state_6 = expanders["before"].outlet
+        else:
+            state_6 = valve.expand(
+                config.refrigerant, state_5_external, intermediate_pressure)
         separation = FlashTank().separate(config.refrigerant, state_6)
         vapor_fraction = separation.vapor_mass_fraction
         state_6_liquid = separation.saturated_liquid
         state_6_vapor = separation.saturated_vapor
-        state_7 = valve.expand(
-            config.refrigerant,
-            state_6_liquid,
-            low_pressure,
-        )
+        if config.expansion_mode in ("after", "both"):
+            expanders["after"] = expander.expand(
+                config.refrigerant, state_6_liquid, low_pressure)
+            state_7 = expanders["after"].outlet
+        else:
+            state_7 = valve.expand(
+                config.refrigerant, state_6_liquid, low_pressure)
 
         low_compression = compressor.compress(
             config.refrigerant,
@@ -174,6 +192,18 @@ class FlashTankCycle:
         )
         total_shaft_power = low_shaft_power + high_shaft_power
         total_electrical_power = low_electrical_power + high_electrical_power
+        # Upper expander: total flow; lower expander: separated liquid only.
+        expander_power = sum(
+            (total_mass_flow if branch == "before" else evaporator_mass_flow)
+            * result.specific_shaft_work_kJ_kg
+            for branch, result in expanders.items())
+        recovered_power = config.expander_recovery_efficiency * expander_power
+        rejected_power = expander_power - recovered_power
+        net_shaft_power = total_shaft_power - recovered_power
+        if not math.isfinite(net_shaft_power) or net_shaft_power <= 0.0:
+            raise ValueError("O ciclo exige potência líquida positiva nos compressores.")
+        if recovered_power:
+            total_electrical_power = net_shaft_power / config.motor_efficiency
 
         source_evaluation = config.heat_source.evaluate(evaporator_heat)
         if not source_evaluation.feasible:
@@ -225,18 +255,34 @@ class FlashTankCycle:
                 high_compression.efficiency_limit_status,
             ),
             total_electrical_power_kW=total_electrical_power,
-            motor_loss_kW=total_electrical_power - total_shaft_power,
+            motor_loss_kW=total_electrical_power - net_shaft_power,
             heating_COP=total_useful_heat / total_electrical_power,
             low_stage_pressure_ratio=intermediate_pressure / low_pressure,
             high_stage_pressure_ratio=high_pressure / intermediate_pressure,
             energy_balance_error_kW=(
                 total_useful_heat - evaporator_heat - total_shaft_power
+                + expander_power
             ),
             heat_source=source_evaluation,
+            expander_shaft_power_kW=expander_power,
+            recovered_power_kW=recovered_power,
+            unrecovered_expander_power_kW=rejected_power,
+            net_shaft_power_kW=net_shaft_power,
+            net_electrical_power_kW=total_electrical_power,
+            system_energy_balance_error_kW=(
+                total_useful_heat + rejected_power - evaporator_heat
+                - net_shaft_power),
+            expanders=expanders,
         )
 
     def _validate_temperatures(self, evaporation_temperature_C: float) -> None:
         config = self.config
+        if config.expansion_mode not in ("valves", "before", "after", "both"):
+            raise ValueError("Modo de expansão inválido para o flash tank.")
+        if not math.isfinite(config.expander_recovery_efficiency) or not (
+            0.0 <= config.expander_recovery_efficiency <= 1.0
+        ):
+            raise ValueError("A recuperação do expansor deve estar entre 0 e 1.")
         if config.heating_capacity_kW <= 0.0:
             raise ValueError("A capacidade de aquecimento deve ser positiva.")
         if config.external_subcooling_specific_heat_kJ_kg < 0.0:

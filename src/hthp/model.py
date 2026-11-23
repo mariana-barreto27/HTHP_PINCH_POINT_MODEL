@@ -590,12 +590,10 @@ def ciclo_alta(p):
 # ============================================================
 
 def ciclo_cascata(p, T_cd_l):
-    if getattr(p, "optimize_injection", False) and not getattr(p, "_evaluating_injection", False) and (
-        p.low_technology in ("flash_tank", "economizer")
-        or p.high_technology in ("flash_tank", "economizer")
-    ):
-        from hthp.configurations import otimizar_injecao
-        return otimizar_injecao(p, T_cd_l)
+    if getattr(p, "optimize_injection", False) and not getattr(p, "_evaluating_injection", False):
+        from hthp.configurations import has_injection, otimizar_injecao
+        if any(has_injection(t) for t in (p.low_technology, p.high_technology)):
+            return otimizar_injecao(p, T_cd_l)
     p = resolver_entradas_externas(p, T_cd_l)
     T_source_out, T_ev_l = temperaturas_evaporador(p)
     T_w_cond_out, T_cd_h = temperaturas_condensador(p)

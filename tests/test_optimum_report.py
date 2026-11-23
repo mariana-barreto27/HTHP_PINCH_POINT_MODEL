@@ -1,12 +1,15 @@
 """Optimum summaries preserve cases and distinguish own-optimum comparisons."""
 
 from copy import deepcopy
+import csv
 from pathlib import Path
 import tempfile
 import unittest
 
-from hthp.configurations import ARCHITECTURES, ComponentParams
-from hthp.optimum_report import build_optimum_summary, save_optimum_report, save_combined_optima_report
+from hthp.configurations import (ARCHITECTURES, EXPANDER_HYBRID_ARCHITECTURES,
+                                 ComponentParams)
+from hthp.optimum_report import (STAGE_NAMES, build_optimum_summary,
+                                 save_optimum_report, save_combined_optima_report)
 from unittest.mock import patch
 
 
@@ -20,12 +23,15 @@ class OptimumReportTests(unittest.TestCase):
                     W_net_shaft_kW=170/float(cop), W_recovered_kW=0,
                     with_high_stage_subcooler=subcooler)
 
-    def test_all_nineteen_unique_cases_and_original_rows_unchanged(self):
+    def test_all_supported_unique_cases_and_original_rows_unchanged(self):
         inputs = [self.row(label, 2 + index/100) for index, (label, _, _) in enumerate(ARCHITECTURES)]
         before = deepcopy(inputs)
         rows = build_optimum_summary(inputs, self.p)
-        self.assertEqual(len(rows), 19)
-        self.assertEqual(len({row["base_configuration"] for row in rows}), 19)
+        self.assertEqual(len(rows), len(ARCHITECTURES))
+        self.assertEqual(len({row["base_configuration"] for row in rows}), len(ARCHITECTURES))
+        for label, low, high in EXPANDER_HYBRID_ARCHITECTURES:
+            row = next(row for row in rows if row["base_configuration"] == label)
+            self.assertEqual((row["low_component"], row["high_component"]), (low, high))
         self.assertEqual(rows[0]["base_configuration"], ARCHITECTURES[-1][0])
         self.assertEqual(inputs, before)
         baseline = next(row for row in rows if row["configuration"] == "Conventional cascade")
@@ -82,7 +88,7 @@ class OptimumReportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             rows = save_optimum_report(summaries, self.p, directory)
             output = Path(directory)
-            self.assertEqual(len(rows), 19)
+            self.assertEqual(len(rows), len(ARCHITECTURES))
             self.assertTrue((output / "optima_summary.csv").exists())
             self.assertFalse((output / "optima.csv").exists())
             markdown = (output / "optima_summary.md").read_text()
@@ -96,22 +102,51 @@ class OptimumReportTests(unittest.TestCase):
             self.assertNotIn(r"\begin{document}", latex)
             self.assertIn(r"\\{[°C]}", latex)
             self.assertNotIn(r"\\[°C]", latex)  # Would be parsed as a vertical-spacing dimension.
-            self.assertEqual(sum(" & " in line and line.endswith(r"\\") for line in latex.splitlines()), 20)
+            self.assertEqual(sum(" & " in line and line.endswith(r"\\") for line in latex.splitlines()),
+                             len(ARCHITECTURES) + 1)
 
-    def test_combined_table_requires_all_38_unique_actual_versions(self):
+    def test_all_expander_hybrids_keep_both_stage_names_in_csv_and_latex(self):
+        summaries = [self.row("Conventional cascade", 2)]
+        summaries += [self.row(label, 2.5 + index/100)
+                      for index, (label, _, _) in enumerate(EXPANDER_HYBRID_ARCHITECTURES)]
+        with tempfile.TemporaryDirectory() as directory:
+            save_optimum_report(summaries, self.p, directory)
+            output = Path(directory)
+            with (output / "optima_summary.csv").open(newline="", encoding="utf-8") as stream:
+                rows = {row["base_configuration"]: row for row in csv.DictReader(stream)}
+            for label, low, high in EXPANDER_HYBRID_ARCHITECTURES:
+                self.assertEqual((rows[label]["low_component"], rows[label]["high_component"]),
+                                 (low, high))
+                self.assertEqual(rows[label]["status"], "valid")
+            latex = (output / "optima_summary.tex").read_text(encoding="utf-8")
+            self.assertIn("Expansor & Flash tank", latex)
+            self.assertIn("Flash tank & Expansor", latex)
+            for _, low, high in EXPANDER_HYBRID_ARCHITECTURES:
+                self.assertIn(f"{STAGE_NAMES[low]} & {STAGE_NAMES[high]}", latex)
+
+    def test_combined_table_requires_all_actual_subcooler_versions(self):
         summaries = [self.row(label, 2 + index/100 + 0.1*enabled, subcooler=enabled)
                      for enabled in (False, True) for index, (label, _, _) in enumerate(ARCHITECTURES)]
         with tempfile.TemporaryDirectory() as directory, \
              patch("hthp.optimum_report.render_optimum_table"):
             rows = save_combined_optima_report(summaries, self.p, directory, "signature")
-            self.assertEqual(len(rows), 38)
+            expected_count = 2 * len(ARCHITECTURES)
+            self.assertEqual(len(rows), expected_count)
             import json
             metadata = json.loads((Path(directory) / "conditions.json").read_text())
-            self.assertEqual(metadata["case_count"], 38)
+            self.assertEqual(metadata["case_count"], expected_count)
+            identities = {(row["base_configuration"], row["with_high_stage_subcooler"])
+                          for row in rows}
+            for label, low, high in EXPANDER_HYBRID_ARCHITECTURES:
+                for enabled in (False, True):
+                    self.assertIn((label, enabled), identities)
+                    row = next(row for row in rows if row["base_configuration"] == label
+                               and row["with_high_stage_subcooler"] == enabled)
+                    self.assertEqual((row["low_component"], row["high_component"]), (low, high))
             self.assertFalse(metadata["parameters_by_subcooler"]["False"]["use_subcooler"])
             self.assertTrue(metadata["parameters_by_subcooler"]["True"]["use_subcooler"])
             self.assertEqual(metadata["solver_signature"], "signature")
-            with self.assertRaisesRegex(ValueError, "38 casos"):
+            with self.assertRaisesRegex(ValueError, f"{expected_count} casos"):
                 save_combined_optima_report(summaries[:-1], self.p, directory, "signature")
 
 

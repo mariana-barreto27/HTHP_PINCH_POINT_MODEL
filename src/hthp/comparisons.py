@@ -1,4 +1,4 @@
-"""Views of the same calculated cascade cases; no thermodynamic changes."""
+"""Agrupamento das arquiteturas e leitura dos resultados para comparação."""
 
 import csv
 from dataclasses import asdict, dataclass
@@ -11,7 +11,10 @@ import CoolProp
 import numpy as np
 import scipy
 
-from hthp.configurations import ARCHITECTURES, MIXED_ARCHITECTURES
+from hthp.configurations import (ARCHITECTURES, MIXED_ARCHITECTURES,
+                                 EXPANDER_HYBRID_ARCHITECTURES,
+                                 LEGACY_ARCHITECTURES, INTRASTAGE_ARCHITECTURES,
+                                 INTRASTAGE_TECHNOLOGIES, technology_components)
 
 
 TECHNOLOGY_NAMES = {
@@ -24,6 +27,38 @@ TECHNOLOGY_FOLDERS = {
     "economizer": "economizador", "ejector": "ejetor_ihx",
     "expander": "expansor",
 }
+TECHNOLOGY_NAMES.update({key: value[0] for key, value in INTRASTAGE_TECHNOLOGIES.items()})
+TECHNOLOGY_FOLDERS.update({key: key for key in INTRASTAGE_TECHNOLOGIES})
+
+INTRASTAGE_GROUPS = {
+    "flash-expansor": ("flash_expansor", "flash tank + expander", {"flash_tank", "expander"}),
+    "economizador-expansor": ("economizador_expansor", "economizer + expander", {"economizer", "expander"}),
+    "ejetor-expansor": ("ejetor_expansor", "ejector + expander", {"ejector", "expander"}),
+    "flash-ejetor": ("flash_ejetor", "flash tank + ejector", {"flash_tank", "ejector"}),
+    "economizador-ejetor": ("economizador_ejetor", "economizer + ejector", {"economizer", "ejector"}),
+}
+
+
+def _intrastage_views():
+    views = []
+    for folder, title, members in INTRASTAGE_GROUPS.values():
+        # Compara a combinação no mesmo circuito com cada componente isolado.
+        baseline = []
+        for case in LEGACY_ARCHITECTURES:
+            stages = set(case[1:])
+            if stages <= members | {"simple"} and len(stages - {"simple"}) <= 1:
+                baseline.append(case)
+
+        hybrids = []
+        for case in INTRASTAGE_ARCHITECTURES:
+            for technology in case[1:]:
+                if technology_components(technology) == members:
+                    hybrids.append(case)
+                    break
+        views.append(ComparisonView(f"mesmo_circuito/{folder}",
+                                    f"Cascade COP — within-circuit {title}",
+                                    tuple(baseline + hybrids), all_metrics=True))
+    return tuple(views)
 
 
 @dataclass(frozen=True)
@@ -39,6 +74,12 @@ def comparison_views(group="todos"):
     if group == "turbina":
         group = "expansor"
     conventional = ARCHITECTURES[0]
+    intrastage = _intrastage_views()
+    if group == "mesmo-ciclo":
+        return intrastage
+    if group in INTRASTAGE_GROUPS:
+        folder = INTRASTAGE_GROUPS[group][0]
+        return tuple(view for view in intrastage if view.folder.endswith("/" + folder))
     family_views = {}
     for technology, choice, title in (
         ("economizer", "economizador", "economizer configurations"),
@@ -46,13 +87,19 @@ def comparison_views(group="todos"):
         ("ejector", "ejetor", "ejector + IHX configurations"),
         ("expander", "expansor", "expansion work recovery"),
     ):
-        cases = (conventional,) + tuple(
-            case for case in ARCHITECTURES if technology in case[1:])
+        cases = [conventional]
+        for case in ARCHITECTURES:
+            _, low, high = case
+            if (technology in technology_components(low)
+                    or technology in technology_components(high)):
+                cases.append(case)
         family_views[choice] = ComparisonView(
             f"por_componente/{TECHNOLOGY_FOLDERS[technology]}",
-            f"Cascade COP — {title}", cases, all_metrics=technology == "expander")
+            f"Cascade COP — {title}", tuple(cases),
+            all_metrics=True)
     mixed = ComparisonView("combinacoes_mistas", "Cascade COP — mixed configurations",
-                           (conventional,) + MIXED_ARCHITECTURES)
+                           (conventional,) + MIXED_ARCHITECTURES + EXPANDER_HYBRID_ARCHITECTURES,
+                           all_metrics=True)
     if group == "mistas":
         return (mixed,)
     if group in family_views:
@@ -60,25 +107,32 @@ def comparison_views(group="todos"):
     if group != "todos":
         raise ValueError(f"Grupo de comparação desconhecido: {group}")
     views = [ComparisonView("todas_combinacoes", "Cascade COP — all supported configurations",
-                            ARCHITECTURES, all_metrics=True), *family_views.values(), mixed]
-    for index, stage, folder in ((1, "Low", "componente_baixa_fixo"),
-                                 (2, "High", "componente_alta_fixo")):
-        for technology, name in TECHNOLOGY_NAMES.items():
-            cases = tuple(case for case in ARCHITECTURES if case[index] == technology)
-            reference = next(case[0] for case in cases if case[3-index] == "simple")
+                            ARCHITECTURES, all_metrics=True), *family_views.values(), mixed,
+             *intrastage]
+    for stage_index, stage, folder in ((1, "Low", "componente_baixa_fixo"),
+                                      (2, "High", "componente_alta_fixo")):
+        for technology in ("simple", "flash_tank", "economizer", "ejector", "expander"):
+            name = TECHNOLOGY_NAMES[technology]
+            cases = tuple(case for case in ARCHITECTURES if case[stage_index] == technology)
+            other_stage_index = 3 - stage_index
+            reference = next(case[0] for case in cases if case[other_stage_index] == "simple")
             views.append(ComparisonView(
                 f"{folder}/{TECHNOLOGY_FOLDERS[technology]}",
-                f"Cascade COP — {stage.lower()} stage: {name}", cases, reference))
+                f"Cascade COP — {stage.lower()} stage: {name}", cases, reference,
+                all_metrics=True))
     return tuple(views)
 
 
 def view_cases(views):
-    labels = {case[0] for view in views for case in view.cases}
+    labels = set()
+    for view in views:
+        for label, _, _ in view.cases:
+            labels.add(label)
     return tuple(case for case in ARCHITECTURES if case[0] in labels)
 
 
 def compact_label(label):
-    """Keep long mixed-case legends readable, with stages unambiguous."""
+    """Encurta a legenda sem perder a identificação dos estágios."""
     if " / " not in label:
         return label
     case = next((case for case in ARCHITECTURES if case[0] == label), None)
@@ -91,30 +145,28 @@ def compact_label(label):
 
 
 def relative_cop_groups(groups, reference, xkey="low_condensation_C"):
-    """Compare at the same temperature, NEVER compare separately optimized COPs."""
-    rows_by_label = dict(groups)
-    reference_rows = rows_by_label[reference]
-    baseline = {round(float(row[xkey]), 9): row
-                for row in reference_rows}
+    """Calcula o ganho de COP em relação à referência na mesma temperatura."""
+    reference_rows = dict(groups)[reference]
+    reference_by_temperature = {round(float(row[xkey]), 9): row for row in reference_rows}
     result = []
     for label, rows in groups:
         converted = []
         for row in rows:
-            item = dict(row)
-            base = baseline.get(round(float(row[xkey]), 9))
-            if (row["status"] == "valid" and base is not None
-                    and base["status"] == "valid" and float(base["COP"]) > 0):
-                item["COP_gain_percent"] = 100 * (float(row["COP"])/float(base["COP"]) - 1)
+            result_row = dict(row)
+            reference_row = reference_by_temperature.get(round(float(row[xkey]), 9))
+            if (row["status"] == "valid" and reference_row is not None
+                    and reference_row["status"] == "valid" and float(reference_row["COP"]) > 0):
+                result_row["COP_gain_percent"] = 100 * (float(row["COP"])/float(reference_row["COP"]) - 1)
             else:
-                item["status"] = "invalid"
-                item["COP_gain_percent"] = float("nan")
-            converted.append(item)
+                result_row["status"] = "invalid"
+                result_row["COP_gain_percent"] = float("nan")
+            converted.append(result_row)
         result.append((label, converted))
     return result
 
 
 def solver_signature():
-    """Invalidate reusable data when equations, settings or property libraries change."""
+    """Identifica a versão dos cálculos e das bibliotecas de propriedades."""
     root = Path(__file__).parent
     files = [root / "model.py", root / "configurations.py"]
     for folder in ("components", "cycles", "thermo", "heat_sources"):
@@ -135,7 +187,7 @@ def comparison_metadata(p, points, signature, cases):
 
 
 def load_comparison_data(folder, expected, cases, temperatures):
-    """Only explicitly requested, matching, complete CSVs can be replotted."""
+    """Lê os CSVs salvos e confere os parâmetros, as métricas e a malha."""
     folder = Path(folder)
     metadata = json.loads((folder / "conditions.json").read_text(encoding="utf-8"))
     for key in ("parameters", "points", "solver_signature"):
@@ -143,7 +195,12 @@ def load_comparison_data(folder, expected, cases, temperatures):
             raise ValueError(f"Resultados salvos incompatíveis ({key}); gere a comparação novamente.")
     with (folder / "architecture_temperature_sweeps.csv").open(newline="") as stream:
         raw_rows = list(csv.DictReader(stream))
-    needs_recovery_metrics = any("expander" in (low, high) for _, low, high in cases)
+    needs_recovery_metrics = False
+    for _, low, high in cases:
+        if ("expander" in technology_components(low)
+                or "expander" in technology_components(high)):
+            needs_recovery_metrics = True
+            break
     groups = []
     for label, _, _ in cases:
         rows = []
