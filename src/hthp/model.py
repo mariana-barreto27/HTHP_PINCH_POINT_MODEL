@@ -112,9 +112,9 @@ class Params:
     DT_source: float = 5.0               # fonte: T_in - T_out [K]
 
     # Pinch points desejados
-    DT_pinch_cond: float = 5.0          # T_cd,h - T_água,out [K]
-    DT_pinch_cascade: float = 5.0       # T_cd,l - T_ev,h [K]
-    DT_pinch_evap: float = 5.0          # T_fonte,out - T_ev [K]
+    DT_pinch_cond: float = 10.0         # T_cd,h - T_água,out [K]
+    DT_pinch_cascade: float = 10.0      # T_cd,l - T_ev,h [K]
+    DT_pinch_evap: float = 10.0         # T_fonte,out - T_ev [K]
     DT_pinch_sc: float = 20.0           # Pinch do subresfriador [K]
 
     # Superaquecimento e subresfriamento

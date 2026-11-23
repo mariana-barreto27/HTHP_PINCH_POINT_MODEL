@@ -52,7 +52,7 @@ São 52 arquiteturas: 25 combinações entre circuitos e 27 casos com componente
 
 ## Notas do modelo
 
-No caso-base, os pinches do condensador, da cascata e do evaporador são de 5 K, assim como o superaquecimento na saída dos evaporadores. A busca por COP usa `scipy.optimize.minimize_scalar` dentro dos limites do modelo. Para Flash tank e economizador, a pressão de injeção também é otimizada. Já a pressão do separador pós-ejetor é fechada por balanço.
+No caso-base, os pinches do condensador, da cascata e do evaporador são de 10 K. O superaquecimento na saída dos evaporadores continua em 5 K e o pinch do subcooler externo é de 20 K. A busca por COP usa `scipy.optimize.minimize_scalar` dentro dos limites do modelo. Para Flash tank e economizador, a pressão de injeção também é otimizada. Já a pressão do separador pós-ejetor é fechada por balanço.
 
 O ejetor inclui um IHX interno. As eficiências do bocal, da mistura e do difusor são 0,50 cada. O IHX mantém 5 K de superaquecimento na sucção e uma aproximação mínima de 5 K; seu calor não conta como calor útil. A formulação segue o modelo de mistura a pressão constante de [Mateu-Royo et al. (2020)](https://doi.org/10.1016/j.ijrefrig.2020.07.016), sem usar os resultados do artigo como multiplicadores de COP.
 
